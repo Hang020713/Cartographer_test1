@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # init ros2
-source ~/init_ros2.bash
+source ~/ros2_ws/init_ros2.bash
 
 # mavros
 sudo chmod 777 /dev/ttyACM0

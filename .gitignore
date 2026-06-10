@@ -1,3 +1,6 @@
 /ros2_ws/build
 /ros2_ws/install
 /ros2_ws/log
+/ws_offboard_control/build
+/ws_offboard_control/install
+/ws_offboard_control/log
