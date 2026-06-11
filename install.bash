@@ -37,6 +37,27 @@ sudo apt full-upgrade -y
 echo "DONE 1st apt update + full-upgrade"
 sleep 1
 
+wait_for_apt
+sudo apt install -y \
+    build-essential \
+    cmake \
+    g++ \
+    git \
+    pkg-config \
+    curl \
+    wget \
+    vim \
+    nano \
+    htop \
+    net-tools \
+    unzip \
+    software-properties-common \
+    ca-certificates \
+    gnupg \
+    lsb-release
+echo "DONE installing core build toolchain + common utilities"
+sleep 1
+
 # Install core build toolchain EARLY (needed for cmake/make builds later)
 # This prevents the "No CMAKE_CXX_COMPILER could be found" error.
 wait_for_apt
