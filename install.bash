@@ -10,9 +10,9 @@ sudo apt update
 echo "DONE 1st apt update"
 sleep 1
 
-# Install git & vcstool & colcon
-sudo apt install -y git vcstool colcon
-echo "DONE installing git, vcstool and colcon"
+# Install git (colcon & vcstool moved below, after ROS repo is added)
+sudo apt install -y git
+echo "DONE installing git"
 sleep 1
 
 # Install SSH
@@ -28,7 +28,7 @@ sleep 1
 # https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html
 
 # Check locale
-sudo apt install locales
+sudo apt install -y locales
 echo "DONE installing locales"
 sleep 1
 sudo locale-gen en_US en_US.UTF-8
@@ -39,12 +39,12 @@ export LANG=en_US.UTF-8
 echo "DONE setting up locales"
 sleep 1
 
-# Add the ROS 2 apt repository 
+# Add the ROS 2 apt repository
 sudo apt install software-properties-common -y
 echo "DONE installing software-properties-common"
 sleep 1
 sudo add-apt-repository universe -y
-echo "DONE adding repo to apt"
+echo "DONE adding universe repo to apt"
 sleep 1
 
 # Install the ros2-apt-source package
@@ -60,16 +60,33 @@ sudo dpkg -i /tmp/ros2-apt-source.deb
 echo "DONE installing ros2 apt source"
 sleep 1
 
-# Install ROS2
+# Update apt now that universe + ROS repos are available
 sudo apt update
-echo "DONE updateing apt 3rd times"
+echo "DONE updating apt 3rd times"
 sleep 1
 
+# Install build tools (correct package names, AFTER repos are added)
+sudo apt install -y \
+    python3-colcon-common-extensions \
+    python3-vcstool \
+    python3-catkin-pkg \
+    python3-rosdep \
+    python3-pip
+echo "DONE installing colcon, vcstool, catkin-pkg, rosdep"
+sleep 1
+
+# Initialise rosdep (safe to ignore error if already initialised)
+sudo rosdep init || true
+rosdep update
+echo "DONE setting up rosdep"
+sleep 1
+
+# Install ROS2
 sudo apt install -y ros-jazzy-desktop
 echo "DONE installing ros2 jazzy desktop"
 sleep 1
 sudo apt install -y ros-jazzy-ros-base
-echo "DONE isntalling ros2 jazzy base"
+echo "DONE installing ros2 jazzy base"
 sleep 1
 
 # Source it
@@ -101,13 +118,14 @@ source install/setup.bash
 echo "DONE sourcing it"
 sleep 1
 
-# Install Micro XRCE-DDS Agent 
+# Install Micro XRCE-DDS Agent
 # https://docs.px4.io/main/en/middleware/uxrce_dds
+cd ~/
 git clone -b v2.4.3 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
 echo "DONE cloning the Micro-XRCE-DDS-Agent"
 sleep 1
 cd Micro-XRCE-DDS-Agent
-mkdir build
+mkdir -p build
 cd build
 cmake ..
 make
