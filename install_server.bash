@@ -71,13 +71,6 @@ sudo apt install -y \
 echo "DONE installing core build toolchain + common utilities"
 sleep 1
 
-# Install core build toolchain EARLY (needed for cmake/make builds later)
-# This prevents the "No CMAKE_CXX_COMPILER could be found" error.
-wait_for_apt
-sudo apt install -y build-essential cmake g++ git
-echo "DONE installing build-essential, cmake, g++, git"
-sleep 1
-
 # Install SSH
 wait_for_apt
 sudo apt install -y openssh-server
@@ -200,9 +193,13 @@ sleep 1
 
 # Start building inside
 cd Cartographer_test1
+rosdep install --from-paths src --ignore-src -r -y
+sleep 1
+
 colcon build --symlink-install
 echo "DONE building the Cartographer_test1"
 sleep 1
+
 source install/setup.bash
 echo "DONE sourcing it"
 sleep 1
