@@ -154,10 +154,10 @@ echo "DONE setting up rosdep"
 sleep 1
 
 # Install ROS2
-wait_for_apt
-sudo apt install -y ros-jazzy-desktop
-echo "DONE installing ros2 jazzy desktop"
-sleep 1
+# wait_for_apt
+# sudo apt install -y ros-jazzy-desktop
+# echo "DONE installing ros2 jazzy desktop"
+# sleep 1
 wait_for_apt
 sudo apt install -y ros-jazzy-ros-base
 echo "DONE installing ros2 jazzy base"
