@@ -37,19 +37,19 @@ sudo apt full-upgrade -y
 echo "DONE 1st apt update + full-upgrade"
 sleep 1
 
-wait_for_apt
-sudo apt install -y libbz2-1.0=1.0.8-5.1 --allow-downgrades
-sudo apt install -y liblz4-1=1.9.4-1build1 --allow-downgrades
-sudo apt install -y libdbus-1-3=1.14.10-4ubuntu4 --allow-downgrades
-sudo apt install -y libdrm2=2.4.120-2build1 --allow-downgrades
-sudo apt install -y ibverbs-providers=50.0-2build2 --allow-downgrades
-sudo apt install -y libibverbs1=50.0-2build2 --allow-downgrades
-sudo apt install -y libicu74=74.2-1ubuntu3 --allow-downgrades
-sudo apt install -y libnuma1=2.0.18-1build1 --allow-downgrades
-sudo apt install -y libpcre2-8-0=10.42-4ubuntu2 --allow-downgrades
-sudo apt install -y libselinux1=3.5-2ubuntu2 --allow-downgrades
-sudo apt install -y libzstd1=1.5.5+dfsg2-2build1 --allow-downgrades
-sudo apt install -y zlib1g=1:1.3.dfsg-3.1ubuntu2 --allow-downgrades
+# wait_for_apt
+# sudo apt install -y libbz2-1.0=1.0.8-5.1 --allow-downgrades
+# sudo apt install -y liblz4-1=1.9.4-1build1 --allow-downgrades
+# sudo apt install -y libdbus-1-3=1.14.10-4ubuntu4 --allow-downgrades
+# sudo apt install -y libdrm2=2.4.120-2build1 --allow-downgrades
+# sudo apt install -y ibverbs-providers=50.0-2build2 --allow-downgrades
+# sudo apt install -y libibverbs1=50.0-2build2 --allow-downgrades
+# sudo apt install -y libicu74=74.2-1ubuntu3 --allow-downgrades
+# sudo apt install -y libnuma1=2.0.18-1build1 --allow-downgrades
+# sudo apt install -y libpcre2-8-0=10.42-4ubuntu2 --allow-downgrades
+# sudo apt install -y libselinux1=3.5-2ubuntu2 --allow-downgrades
+# sudo apt install -y libzstd1=1.5.5+dfsg2-2build1 --allow-downgrades
+# sudo apt install -y zlib1g=1:1.3.dfsg-3.1ubuntu2 --allow-downgrades
 wait_for_apt
 sudo apt install -y \
     build-essential \
