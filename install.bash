@@ -99,7 +99,20 @@ sleep 1
 sudo apt install -y ros-jazzy-mavros ros-jazzy-mavros-extras
 echo "DONE installing mavros"
 sleep 1
-ros2 run mavros install_geographiclib_datasets.sh
+# Install mavros's geographiclib datasets (needs root)
+# The install script lives inside the mavros package's libexec/share dir.
+GEO_SCRIPT="$(ros2 pkg prefix mavros)/lib/mavros/install_geographiclib_datasets.sh"
+if [ -f "$GEO_SCRIPT" ]; then
+    sudo bash "$GEO_SCRIPT"
+else
+    # Fallback: search the filesystem for it
+    GEO_SCRIPT="$(find /opt/ros/jazzy -name install_geographiclib_datasets.sh 2>/dev/null | head -n 1)"
+    if [ -n "$GEO_SCRIPT" ]; then
+        sudo bash "$GEO_SCRIPT"
+    else
+        echo "WARNING: install_geographiclib_datasets.sh not found!"
+    fi
+fi
 echo "DONE installing mavros's geographic lib"
 sleep 1
 
