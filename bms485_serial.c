@@ -31,8 +31,7 @@
 #define ERROR_PERIOD_SEC 2
 #define POLL_PERIOD_SEC   1
 #define RESP_TIMEOUT_MS   500
-#define QUERY_START_ADDRESS 0x30        // BMS general status parameters inquiry: Start from 0x0003
-#define QUERY_DATA_LENGTH 6             // Query how many data(int for one kind of data)
+#define TOTAL_COMMAND 3
 
 /* ----  Modbus CRC-16 Lookup tables, copied verbatim from the BMS protocol PDF ---- */
 static const uint8_t aucCRCHi[] = {
@@ -94,20 +93,42 @@ void hexdump(const char *label, const uint8_t *buf, int n);     // Printout the 
 int build_query_command(uint8_t *buf, uint8_t slave_id, uint16_t start_addr, uint16_t data_length);
 
 /* Decode the 0x0030..0x0035 block (6 registers, 12 data bytes). */
-void decode_status_block(const uint8_t *d, int data_bytes)
+void decode_status_block(const uint8_t type, const uint8_t *d, int data_bytes)
 {
-    if (data_bytes < 12) { printf("  (short data, %d bytes)\n", data_bytes); return; }
-    uint16_t chg_i  = (d[0]  << 8) | d[1];   /* 0.1A  */
-    uint16_t dis_i  = (d[2]  << 8) | d[3];   /* 0.1A  */
-    uint16_t volt   = (d[4]  << 8) | d[5];   /* 0.1V  */
-    uint16_t soc    = (d[6]  << 8) | d[7];   /* %     */
-    uint32_t cap    = ((uint32_t)d[8] << 24) | ((uint32_t)d[9] << 16) |
-                      ((uint32_t)d[10] << 8) |  (uint32_t)d[11];  /* mAh, 4 bytes */
-    printf("  Charge current   : %.1f A\n",  chg_i / 10.0);
-    printf("  Discharge current: %.1f A\n",  dis_i / 10.0);
-    printf("  Module voltage   : %.1f V\n",  volt  / 10.0);
-    printf("  SOC              : %u %%\n",   soc);
-    printf("  Total capacity   : %u mAh\n",  cap);
+    switch(type)
+    {
+        case 0:
+        {   // cells, 0.001V per LSB
+            for(int i = 0; i < data_bytes; i += 2)
+            {
+                uint16_t cell_voltage = (d[i] << 8) | d[i + 1];
+                printf("  Cell %d Voltage: %.3f V\n", i/2, cell_voltage / 1000.0f);
+            }
+        } break;
+        case 1:
+        {   // temp, 0.1K per LSB
+            for(int i = 0; i < data_bytes; i += 2)
+            {
+                uint16_t cell_temp = (d[i] << 8) | d[i + 1];
+                printf("  Sensor %d Temp: %.1f K\n", i/2, cell_temp / 10.0f);
+            }
+        } break;
+        case 2:
+        {   // module
+            if (data_bytes < 12) { printf("  (short data, %d bytes)\n", data_bytes); return; }
+            uint16_t chg_i = (d[0] << 8) | d[1];   /* 0.1A */
+            uint16_t dis_i = (d[2] << 8) | d[3];   /* 0.1A */
+            uint16_t volt  = (d[4] << 8) | d[5];   /* 0.01V */
+            uint16_t soc   = (d[6] << 8) | d[7];   /* % */
+            uint32_t cap   = ((uint32_t)d[8] << 24) | ((uint32_t)d[9] << 16) |
+                             ((uint32_t)d[10] << 8) | (uint32_t)d[11];  /* mAh */
+            printf("  Charge current   : %.1f A\n",  chg_i / 10.0);
+            printf("  Discharge current: %.1f A\n",  dis_i / 10.0);
+            printf("  Module voltage   : %.1f V\n",  volt  / 100.0);
+            printf("  SOC              : %u %%\n",   soc);
+            printf("  Total capacity   : %u mAh\n",  cap);
+        } break;
+    }
 }
 
 int main(void)
@@ -117,69 +138,76 @@ int main(void)
     if (fd < 0) return 1;
 
     // Function Variables
-    uint8_t tx[8];
     uint8_t rx[256];
+    uint8_t tx[TOTAL_COMMAND][8];       //[0]: cells, [1]: Temp, [2]: Module
 
-    // Build read command
-    int txlen = build_query_command(tx, SLAVE_ID, QUERY_START_ADDRESS, QUERY_DATA_LENGTH);  /* live-data block */
+    // Build query command
+    int txlen[3] = 
+    {
+        build_query_command(tx[0], SLAVE_ID, 0x0004, 8),
+        build_query_command(tx[1], SLAVE_ID, 0x0026, 8),
+        build_query_command(tx[2], SLAVE_ID, 0x0030, 6)
+    };
     printf("Polling BMS id %d on %s every %d s ... (Ctrl-C to quit)\n", SLAVE_ID, SERIAL_PORT, POLL_PERIOD_SEC);
 
     // Start reading
     while (1) {
-        tcflush(fd, TCIFLUSH);  // Clear buffer
+        for(uint8_t i = 0; i < TOTAL_COMMAND; i++)
+        {
+            tcflush(fd, TCIFLUSH);  // Clear buffer
 
-        // Send query command
-        hexdump("TX", tx, txlen);
-        if (rs485_send(fd, tx, txlen) < 0) 
-        { 
-            perror("send query command"); 
-            break; 
-        }
-
-        // Read response
-        int n = read_response(fd, rx, sizeof(rx), RESP_TIMEOUT_MS);
-        if (n <= 0) {
-            printf("RX: (no response - timeout)\n----\n");
-            sleep(ERROR_PERIOD_SEC);    // Take a gap
-            continue;
-        }
-        hexdump("RX", rx, n);
-
-        // Validation response format, at least 5 bytes
-        if (n < 5) 
-        { 
-            printf("  frame too short\n----\n"); 
-            sleep(ERROR_PERIOD_SEC);     // Take a gap
-            continue; 
-        }
-
-        // CRC check (received CRC is LSB then MSB)
-        uint16_t calc = bms_crc16(rx, n - 2);
-        uint16_t recv = (rx[n - 1] << 8) | rx[n - 2];   // Convert to MSB, LSB
-        if (calc != recv) {
-            printf("  CRC mismatch (calc=%04X recv=%04X)\n----\n", calc, recv);
-            sleep(ERROR_PERIOD_SEC);     // Take a gap
-            continue;
-        }
-
-        // Check response
-        if (rx[1] == (0x03 | 0x80)) {            /* abnormal response, command type + 128 */
-            printf("  BMS ERROR, code 0x%02X ", rx[2]);
-            switch (rx[2]) {
-                case 0x01: printf("(Slave ID out of range)\n"); break;
-                case 0x02: printf("(command type error)\n");    break;
-                case 0x03: printf("(CRC error)\n");             break;
-                default:   printf("(unknown)\n");               break;
+            // Send query command
+            hexdump("TX", tx[i], txlen[i]);
+            if (rs485_send(fd, tx[i], txlen[i]) < 0) 
+            { 
+                perror("send query command"); 
+                break; 
             }
-        } else if (rx[1] == 0x03) {              /* normal response */
-            uint16_t reg_count  = (rx[2] << 8) | rx[3];
-            int      data_bytes = reg_count * 2;
-            printf("  OK: %u registers (%d data bytes)\n", reg_count, data_bytes);
-            decode_status_block(&rx[4], data_bytes);
-        } else {
-            printf("  unexpected command byte 0x%02X\n", rx[1]);
-        }
 
+            // Read response
+            int n = read_response(fd, rx, sizeof(rx), RESP_TIMEOUT_MS);
+            if (n <= 0) {
+                printf("RX: (no response - timeout)\n----\n");
+                sleep(ERROR_PERIOD_SEC);    // Take a gap
+                continue;
+            }
+            hexdump("RX", rx, n);
+
+            // Validation response format, at least 5 bytes
+            if (n < 5) 
+            { 
+                printf("  frame too short\n----\n"); 
+                sleep(ERROR_PERIOD_SEC);     // Take a gap
+                continue; 
+            }
+
+            // CRC check (received CRC is LSB then MSB)
+            uint16_t calc = bms_crc16(rx, n - 2);
+            uint16_t recv = (rx[n - 1] << 8) | rx[n - 2];   // Convert to MSB, LSB
+            if (calc != recv) {
+                printf("  CRC mismatch (calc=%04X recv=%04X)\n----\n", calc, recv);
+                sleep(ERROR_PERIOD_SEC);     // Take a gap
+                continue;
+            }
+
+            // Check response
+            if (rx[1] == (0x03 | 0x80)) {            /* abnormal response, command type + 128 */
+                printf("  BMS ERROR, code 0x%02X ", rx[2]);
+                switch (rx[2]) {
+                    case 0x01: printf("(Slave ID out of range)\n"); break;
+                    case 0x02: printf("(command type error)\n");    break;
+                    case 0x03: printf("(CRC error)\n");             break;
+                    default:   printf("(unknown)\n");               break;
+                }
+            } else if (rx[1] == 0x03) {              /* normal response */
+                uint16_t reg_count  = (rx[2] << 8) | rx[3];
+                int      data_bytes = reg_count * 2;
+                printf("  OK: %u registers (%d data bytes)\n", reg_count, data_bytes);
+                decode_status_block(i, &rx[4], data_bytes);
+            } else {
+                printf("  unexpected command byte 0x%02X\n", rx[1]);
+            }
+        }
         printf("----\n");
         sleep(POLL_PERIOD_SEC);
     }
