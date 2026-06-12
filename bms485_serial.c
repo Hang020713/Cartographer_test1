@@ -155,7 +155,7 @@ int main(void)
 
         // CRC check (received CRC is LSB then MSB)
         uint16_t calc = bms_crc16(rx, n - 2);
-        uint16_t recv = rx[n - 2] | (rx[n - 1] << 8);   // Convert to MSB, LSB
+        uint16_t recv = (rx[n - 1] << 8) | rx[n - 2];   // Convert to MSB, LSB
         if (calc != recv) {
             printf("  CRC mismatch (calc=%04X recv=%04X)\n----\n", calc, recv);
             sleep(ERROR_PERIOD_SEC);     // Take a gap
@@ -252,11 +252,7 @@ int serial_open(const char *device)
     struct serial_rs485 chk;
     memset(&chk, 0, sizeof(chk));
     if (ioctl(fd, TIOCGRS485, &chk) == 0)
-    {
         fprintf(stderr, "RS485 readback flags = 0x%x %s\n", chk.flags, (chk.flags & SER_RS485_ENABLED) ? "(ENABLED)" : "(NOT ENABLED!)");
-        close(fd);
-        return -1;
-    }
 
     // Serial open success
     return fd;
@@ -275,8 +271,8 @@ static uint16_t bms_crc16(const uint8_t *frame, uint16_t len)
         crc_hi = aucCRCLo[idx];
     }
 
-    // LSB & MSB
-    return (uint16_t)(crc_lo << 8 | crc_hi);
+    // MSB & LSB
+    return (uint16_t)(crc_hi << 8 | crc_lo);
 }
 
 int rs485_send(int fd, const uint8_t *data, size_t len)
