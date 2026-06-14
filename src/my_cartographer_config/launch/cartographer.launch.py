@@ -28,7 +28,7 @@ def generate_launch_description():
             ],
             remappings=[
                 ('scan', '/scan'),
-                ('imu', '/mavros/imu/data')
+                ('imu', '/imu/data')
             ]
         ),
 
