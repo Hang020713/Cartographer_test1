@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
 		'slam_to_vision = slam_to_vision.slam_to_vision_node:main',
+        'offboard = slam_to_vision.offboard:main',
         ],
     },
 )
