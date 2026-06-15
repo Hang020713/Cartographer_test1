@@ -1,3 +1,5 @@
+import math
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
@@ -6,10 +8,22 @@ from px4_msgs.msg import SensorCombined, VehicleAttitude
 from sensor_msgs.msg import Imu
 
 
+def px4_quat_to_ros(q_px4):
+    """Convert PX4 attitude quaternion (NED-FRD, [w,x,y,z])
+    to ROS orientation (ENU-FLU, [w,x,y,z])."""
+    w, x, y, z = q_px4
+    a = math.sqrt(0.5)
+    rw = -a * (w + z)
+    rx = -a * (x + y)
+    ry =  a * (y - x)
+    rz =  a * (z - w)
+    return rw, rx, ry, rz
+
+
 class Px4ImuBridge(Node):
     def __init__(self):
         super().__init__('px4_imu_bridge')
-        print("Start px4_imu_bridge node")
+        self.get_logger().info("Start px4_imu_bridge node")
 
         # QoS that matches the PX4 uXRCE-DDS publisher
         px4_qos = QoSProfile(
@@ -32,13 +46,13 @@ class Px4ImuBridge(Node):
         self.pub = self.create_publisher(Imu, '/imu/data', 10)
 
     def attitude_cb(self, msg):
-        # PX4 quaternion is [w, x, y, z] in NED
+        # PX4 quaternion is [w, x, y, z] in NED-FRD
         self.latest_q = msg.q
 
     def sensor_cb(self, msg):
         imu = Imu()
         imu.header.stamp = self.get_clock().now().to_msg()
-        imu.header.frame_id = 'imu_link'   # match your URDF / Cartographer config
+        imu.header.frame_id = 'imu_link'   # must exist in your TF tree
 
         # FRD -> FLU : x stays, y and z are negated
         imu.angular_velocity.x =  float(msg.gyro_rad[0])
@@ -50,12 +64,11 @@ class Px4ImuBridge(Node):
         imu.linear_acceleration.z = -float(msg.accelerometer_m_s2[2])
 
         if self.latest_q is not None:
-            # NED [w,x,y,z] -> ENU FLU orientation
-            w, x, y, z = self.latest_q
-            imu.orientation.w = float(w)
-            imu.orientation.x = float(x)
-            imu.orientation.y = -float(y)
-            imu.orientation.z = -float(z)
+            w, x, y, z = px4_quat_to_ros(self.latest_q)
+            imu.orientation.w = w
+            imu.orientation.x = x
+            imu.orientation.y = y
+            imu.orientation.z = z
         else:
             # tell consumers orientation is invalid
             imu.orientation_covariance[0] = -1.0
