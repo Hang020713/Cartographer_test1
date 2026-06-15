@@ -1,8 +1,11 @@
+import math
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 import tf2_ros
 from px4_msgs.msg import VehicleOdometry
+
+SQRT1_2 = 1.0 / math.sqrt(2.0)
 
 
 class SlamToVision(Node):
@@ -17,10 +20,10 @@ class SlamToVision(Node):
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
-        # PX4 uXRCE-DDS topics use BEST_EFFORT
+        # PX4 uXRCE-DDS in-topics use BEST_EFFORT
         qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
         )
@@ -50,12 +53,17 @@ class SlamToVision(Node):
         msg.timestamp_sample = now
         msg.pose_frame = VehicleOdometry.POSE_FRAME_NED
 
-        # ENU (ROS) -> NED (PX4)
+        # Position: ENU (ROS) -> NED (PX4)
         msg.position = [float(tr.y), float(tr.x), float(-tr.z)]
 
-        # Quaternion ENU->NED. Order in px4_msgs is [w, x, y, z].
-        # This swaps x<->y and negates z, matching the position swap.
-        msg.q = [float(q.w), float(q.y), float(q.x), float(-q.z)]
+        # Orientation: ENU/FLU -> NED/FRD (proper double-frame transform)
+        # px4_msgs order is [w, x, y, z]
+        msg.q = [
+            float(SQRT1_2 * (q.w + q.z)),
+            float(SQRT1_2 * (q.x + q.y)),
+            float(SQRT1_2 * (q.x - q.y)),
+            float(SQRT1_2 * (q.w - q.z)),
+        ]
 
         msg.velocity_frame = VehicleOdometry.VELOCITY_FRAME_UNKNOWN
         msg.velocity = [float('nan')] * 3        # let EKF derive velocity
