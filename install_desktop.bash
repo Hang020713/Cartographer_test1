@@ -215,6 +215,14 @@ echo "DONE making the Micro-XRCE-DDS-Agent"
 sleep 1
 sudo ldconfig /usr/local/lib/
 
+# Install the cartographer_ros package dependencies (after ROS2 is installed)
+wait_for_apt
+sudo apt install -y \
+    ros-jazzy-cartographer-ros \
+    ros-jazzy-cartographer-ros-msgs
+echo "DONE installing cartographer_ros dependencies"
+sleep 1
+
 # Re-enable background apt services
 echo "Re-enabling automatic apt services..."
 sudo systemctl start apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
