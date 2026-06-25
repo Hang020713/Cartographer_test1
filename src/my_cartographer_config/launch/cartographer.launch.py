@@ -24,7 +24,7 @@ def generate_launch_description():
             parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
             arguments=[
                 '-configuration_directory', configuration_directory,
-                '-configuration_basename', configuration_basename
+                '-configuration_basename', configuration_basename,
             ],
             remappings=[
                 ('scan', '/scan'),
@@ -38,6 +38,7 @@ def generate_launch_description():
             name='cartographer_occupancy_grid_node',
             output='screen',
             parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
-            arguments=['-resolution', '0.05']
+            arguments=['-resolution', '0.1',
+                '-publish_period_src', '1.0']
         ),
     ])
