@@ -24,8 +24,10 @@ setup(
     },
     entry_points={
         'console_scripts': [
-		'slam_to_vision = slam_to_vision.slam_to_vision_node:main',
-        'offboard = slam_to_vision.offboard:main',
+		    'slam_to_vision = slam_to_vision.slam_to_vision_node:main',
+            'offboard_velocity = slam_to_vision.offboard_velocity:main',
+            'offboard_position = slam_to_vision.offboard_position:main',
+            'nav2_cmd = slam_to_vision.cmdVelToRover:main'
         ],
     },
 )

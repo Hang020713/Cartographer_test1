@@ -56,13 +56,20 @@ class SlamToVision(Node):
         # Position: ENU (ROS) -> NED (PX4)
         msg.position = [float(tr.y), float(tr.x), float(-tr.z)]
 
-        # Orientation: ENU/FLU -> NED/FRD (proper double-frame transform)
-        # px4_msgs order is [w, x, y, z]
+        # --- Correct the 180-deg-yaw backward-facing sensor frame ---
+        # Apply q * q_z180  (q_z180 = body-Z 180 deg rotation)
+        # In [w,x,y,z]: (w,x,y,z) -> (-z, y, -x, w)
+        cw = -q.z
+        cx =  q.y
+        cy = -q.x
+        cz =  q.w
+
+        # Orientation: ENU/FLU -> NED/FRD, using the CORRECTED quaternion
         msg.q = [
-            float(SQRT1_2 * (q.w + q.z)),
-            float(SQRT1_2 * (q.x + q.y)),
-            float(SQRT1_2 * (q.x - q.y)),
-            float(SQRT1_2 * (q.w - q.z)),
+            float(SQRT1_2 * (cw + cz)),
+            float(SQRT1_2 * (cx + cy)),
+            float(SQRT1_2 * (cx - cy)),
+            float(SQRT1_2 * (cw - cz)),
         ]
 
         msg.velocity_frame = VehicleOdometry.VELOCITY_FRAME_UNKNOWN

@@ -5,6 +5,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPo
 from px4_msgs.msg import (OffboardControlMode, TrajectorySetpoint,
                           VehicleCommand, VehicleStatus)
 
+
 class Offboard(Node):
     def __init__(self):
         super().__init__('offboard')
@@ -80,12 +81,8 @@ class Offboard(Node):
             self.send_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
             self.send_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
             self.get_logger().info('Requested OFFBOARD + ARM')
-        elif self.counter < 120:
-            # ~5 seconds of driving forward at 0.3 m/s
-            self.publish_velocity(0.3, 0.3)
         else:
-            # stop
-            self.publish_velocity(0.0, 0.0)
+            self.publish_velocity(-20, -20)
 
         if self.status is not None and self.counter % 20 == 0:
             self.get_logger().info(
