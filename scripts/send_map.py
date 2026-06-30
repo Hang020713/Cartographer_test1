@@ -8,9 +8,9 @@ import time
 # Example: python3 send_map.py /path/to/map.pgm /dev/tty.usbserial-XXXX 115200
 
 # Parameters with default values
-FILE_PATH = sys.argv[1] or "/Users/b/Downloads/square_map.pgm"
-SERIAL_PORT = sys.argv[2] or "/dev/tty.usbserial-XXXX"
-BAUDRATE = int(sys.argv[3])  or 115200
+FILE_PATH = "/Users/b/Downloads/square_map.pgm"
+SERIAL_PORT = "/dev/tty.usbserial-140"
+BAUDRATE = 115200
 
 # Open the serial port
 ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1)
