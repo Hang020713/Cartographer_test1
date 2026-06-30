@@ -6,14 +6,14 @@ sudo nmcli connection add \
   con-name Hotspot \
   autoconnect yes \
   wifi.mode ap \
-  wifi.ssid testcm5 \
+  wifi.ssid testingcm5 \
   ipv4.method shared \
   ipv4.addresses 192.168.4.1/24
 
 # Set WiFi password
 sudo nmcli connection modify Hotspot \
   wifi-sec.key-mgmt wpa-psk \
-  wifi-sec.psk "testcm5"
+  wifi-sec.psk "testingcm5"
 
 # Enable the hotspot
 sudo nmcli connection up Hotspot
