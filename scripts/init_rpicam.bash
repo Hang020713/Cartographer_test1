@@ -30,3 +30,7 @@ meson setup build -Denable_libav=disabled -Denable_drm=enabled -Denable_egl=enab
 # Compile and install
 meson compile -C build
 sudo meson install -C build
+sudo ldconfig
+
+# Add user to group permission
+sudo usermod -aG video $USER
