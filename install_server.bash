@@ -15,6 +15,7 @@ WORKSPACE_NAME="Cartographer_test1"
 WORKSPACE_REPO="https://github.com/Hang020713/Cartographer_test1.git"
 MICRO_XRCE_VERSION="v2.4.3"
 LOG_FILE="/tmp/install_$(date +%Y%m%d_%H%M%S).log"
+BOOT_FIRMWARE="/boot/firmware"
 
 # -------------------------------------------------------------------
 # Helper functions
@@ -25,6 +26,10 @@ log() {
 
 log_error() {
     log "ERROR: $*" >&2
+}
+
+log_warning() {
+    log "WARNING: $*"
 }
 
 wait_for_apt() {
@@ -93,7 +98,8 @@ apt_install \
     software-properties-common \
     ca-certificates \
     gnupg \
-    lsb-release
+    lsb-release \
+    network-manager
 log "Core build toolchain and utilities installed."
 
 # -------------------------------------------------------------------
@@ -314,6 +320,61 @@ log "GPIO tools installed."
 # -------------------------------------------------------------------
 sudo usermod -aG video "$USER"
 log "User added to video and dialout groups."
+
+echo "dtoverlay=vc4-kms-v3d,cma-512" | sudo tee -a "${BOOT_FIRMWARE}/config.txt"
+echo "gpu_mem=128" | sudo tee -a "${BOOT_FIRMWARE}/config.txt"
+
+# -------------------------------------------------------------------
+# Device tree overlays for camera
+# -------------------------------------------------------------------
+# OVERLAYS_SRC="${HOME}/${WORKSPACE_NAME}/dtoverlays"
+# OVERLAYS_DEST="${BOOT_FIRMWARE}/overlays"
+
+# if [ -d "$OVERLAYS_SRC" ]; then
+#     # Ensure overlay destination exists
+#     sudo mkdir -p "$OVERLAYS_DEST"
+    
+#     # Copy device tree overlays
+#     for overlay in imx708-cam0.dtbo imx708-cam1.dtbo; do
+#         if [ -f "${OVERLAYS_SRC}/${overlay}" ]; then
+#             sudo cp "${OVERLAYS_SRC}/${overlay}" "${OVERLAYS_DEST}/${overlay}"
+#             log "Copied ${overlay} to ${OVERLAYS_DEST}"
+#         else
+#             log_warning "${overlay} not found in ${OVERLAYS_SRC}"
+#         fi
+#     done
+
+#     # Append camera configuration to config files
+#     CONFIG_FILE="${BOOT_FIRMWARE}/config.txt"
+#     USERCFG_FILE="${BOOT_FIRMWARE}/usercfg.txt"
+
+#     # Check if entries already exist before appending
+#     if ! grep -q "camera_auto_detect=0" "$USERCFG_FILE" 2>/dev/null; then
+#         echo "camera_auto_detect=0" | sudo tee -a "$USERCFG_FILE" > /dev/null
+#         log "Disabled camera auto-detect in usercfg.txt"
+#     else
+#         log "Camera auto-detect already disabled in usercfg.txt"
+#     fi
+
+#     if ! grep -q "dtoverlay=imx708-cam0" "$CONFIG_FILE" 2>/dev/null; then
+#         echo "dtoverlay=imx708-cam0" | sudo tee -a "$CONFIG_FILE" > /dev/null
+#         log "Added imx708-cam0 overlay to config.txt"
+#     else
+#         log "imx708-cam0 overlay already in config.txt"
+#     fi
+
+#     if ! grep -q "dtoverlay=imx708-cam1" "$CONFIG_FILE" 2>/dev/null; then
+#         echo "dtoverlay=imx708-cam1" | sudo tee -a "$CONFIG_FILE" > /dev/null
+#         log "Added imx708-cam1 overlay to config.txt"
+#     else
+#         log "imx708-cam1 overlay already in config.txt"
+#     fi
+
+#     log "Device tree overlays configured."
+# else
+#     log_warning "Overlay source directory not found: ${OVERLAYS_SRC}"
+#     log_warning "Make sure ${WORKSPACE_NAME} repository includes dtoverlays directory"
+# fi
 
 # -------------------------------------------------------------------
 # Cleanup and finalization
