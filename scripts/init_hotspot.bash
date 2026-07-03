@@ -28,9 +28,10 @@ sudo nmcli connection up Hotspot
 # Enable SSH service (ubuntu)
 # sudo apt install openssh-server -y
 # sudo systemctl enable --now ssh
-# sudo systemctl start ssh
 # sudo ufw allow ssh
-# sudo nano /etc/ssh/sshd_config
+# sudo systemctl start ssh
+
+# sudo nano /etc/ssh/sshd_config, and change below
 # PasswordAuthentication yes
 # KbdInteractiveAuthentication yes
 # sudo systemctl restart ssh

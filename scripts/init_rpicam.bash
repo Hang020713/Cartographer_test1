@@ -6,6 +6,7 @@ sudo apt install -y libdw-dev libunwind-dev libudev-dev libgstreamer1.0-dev libg
 sudo apt install -y cmake libboost-program-options-dev libdrm-dev libexif-dev ffmpeg libavcodec-extra libavcodec-dev libavdevice-dev libpng-dev libpng-tools libepoxy-dev qt5-qmake qtmultimedia5-dev
 
 # Clone the Raspberry Pi's libcamera repository
+cd ~
 git clone https://github.com/raspberrypi/libcamera.git
 cd libcamera    
 
@@ -13,7 +14,6 @@ cd libcamera
 meson setup build --buildtype=release -Dpipelines=rpi/vc4,rpi/pisp -Dipas=rpi/vc4,rpi/pisp -Dv4l2=true -Dgstreamer=enabled -Dtest=false -Dlc-compliance=disabled -Dcam=disabled -Dqcam=disabled -Ddocumentation=disabled -Dpycamera=enabled
 
 # Compile and install
-ninja -C build install
 sudo ninja -C build install
 
 
@@ -34,3 +34,6 @@ sudo ldconfig
 
 # Add user to group permission
 sudo usermod -aG video $USER
+
+# then reboot
+echo "Please reboot your system to apply the changes. After reboot, you can test the camera using the rpicam-apps commands."

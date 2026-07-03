@@ -225,8 +225,8 @@ cmake ..
 make
 sudo make install
 echo "DONE making the Micro-XRCE-DDS-Agent"
-sleep 1
 sudo ldconfig /usr/local/lib/
+sleep 1
 
 # Install the cartographer_ros package dependencies (after ROS2 is installed)
 wait_for_apt
