@@ -1,57 +1,83 @@
 #!/bin/bash
+set -euo pipefail
 
-# This is the installation file for the fresh ubuntu 24.04 server/desktop LTS
-# to install the whole requirement in order to use this workspace
-# not verified on every device.
-# Use at your own risks
+# =============================================================================
+# Installation script for fresh Ubuntu 24.04 LTS (server/desktop)
+# Installs all requirements for this workspace
+# Not verified on every device - use at your own risk
+# =============================================================================
 
-# ---------------------------------------------------------------
-# Wait for apt/dpkg locks to be released (avoids race with
-# unattended-upgrades / apt-daily background services)
-# ---------------------------------------------------------------
+# -------------------------------------------------------------------
+# Configuration
+# -------------------------------------------------------------------
+ROS_DISTRO="jazzy"
+WORKSPACE_NAME="Cartographer_test1"
+WORKSPACE_REPO="https://github.com/Hang020713/Cartographer_test1.git"
+MICRO_XRCE_VERSION="v2.4.3"
+LOG_FILE="/tmp/install_$(date +%Y%m%d_%H%M%S).log"
+
+# -------------------------------------------------------------------
+# Helper functions
+# -------------------------------------------------------------------
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
+log_error() {
+    log "ERROR: $*" >&2
+}
+
 wait_for_apt() {
-    echo "Checking for apt/dpkg locks..."
+    log "Checking for apt/dpkg locks..."
     while sudo fuser /var/lib/dpkg/lock-frontend \
                      /var/lib/dpkg/lock \
                      /var/lib/apt/lists/lock \
                      /var/cache/apt/archives/lock >/dev/null 2>&1; do
-        echo "  Another process holds the apt/dpkg lock. Waiting 5s..."
+        log "  Lock held by another process. Waiting 5s..."
         sleep 5
     done
-    echo "  Lock is free."
+    log "  Lock is free."
 }
 
+apt_install() {
+    wait_for_apt
+    sudo apt-get install -y "$@"
+}
+
+apt_update() {
+    wait_for_apt
+    sudo apt-get update
+}
+
+disable_apt_services() {
+    log "Disabling automatic apt services temporarily..."
+    sudo systemctl stop unattended-upgrades.service 2>/dev/null || true
+    sudo systemctl stop apt-daily.service apt-daily.timer 2>/dev/null || true
+    sudo systemctl stop apt-daily-upgrade.service apt-daily-upgrade.timer 2>/dev/null || true
+}
+
+enable_apt_services() {
+    log "Re-enabling automatic apt services..."
+    sudo systemctl start apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
+    sudo systemctl start unattended-upgrades.service 2>/dev/null || true
+}
+
+# -------------------------------------------------------------------
+# Start installation
+# -------------------------------------------------------------------
+log "Starting installation process..."
+
 # Stop background apt services to prevent lock contention
-echo "Disabling automatic apt services temporarily..."
-sudo systemctl stop unattended-upgrades.service 2>/dev/null || true
-sudo systemctl stop apt-daily.service apt-daily.timer 2>/dev/null || true
-sudo systemctl stop apt-daily-upgrade.service apt-daily-upgrade.timer 2>/dev/null || true
-sleep 1
+disable_apt_services
 
-# Get latest update and full upgrade (full-upgrade resolves version
-# conflicts like the libbz2 / bzip2 mismatch)
+# Initial system update
+apt_update
 wait_for_apt
-sudo apt update
-wait_for_apt
-sudo apt full-upgrade -y
-echo "DONE 1st apt update + full-upgrade"
-sleep 1
+sudo apt-get full-upgrade -y
+log "System updated successfully."
 
-# wait_for_apt
-# sudo apt install -y libbz2-1.0=1.0.8-5.1 --allow-downgrades
-# sudo apt install -y liblz4-1=1.9.4-1build1 --allow-downgrades
-# sudo apt install -y libdbus-1-3=1.14.10-4ubuntu4 --allow-downgrades
-# sudo apt install -y libdrm2=2.4.120-2build1 --allow-downgrades
-# sudo apt install -y ibverbs-providers=50.0-2build2 --allow-downgrades
-# sudo apt install -y libibverbs1=50.0-2build2 --allow-downgrades
-# sudo apt install -y libicu74=74.2-1ubuntu3 --allow-downgrades
-# sudo apt install -y libnuma1=2.0.18-1build1 --allow-downgrades
-# sudo apt install -y libpcre2-8-0=10.42-4ubuntu2 --allow-downgrades
-# sudo apt install -y libselinux1=3.5-2ubuntu2 --allow-downgrades
-# sudo apt install -y libzstd1=1.5.5+dfsg2-2build1 --allow-downgrades
-# sudo apt install -y zlib1g=1:1.3.dfsg-3.1ubuntu2 --allow-downgrades
-wait_for_apt
-sudo apt install -y \
+# Install core build tools and utilities
+apt_install \
     build-essential \
     cmake \
     g++ \
@@ -68,235 +94,231 @@ sudo apt install -y \
     ca-certificates \
     gnupg \
     lsb-release
-echo "DONE installing core build toolchain + common utilities"
-sleep 1
+log "Core build toolchain and utilities installed."
 
-# Install SSH
-wait_for_apt
-sudo apt install -y openssh-server
-echo "DONE installing openssh"
-sleep 1
-sudo systemctl enable --now ssh # Enable on boot
-sudo ufw allow ssh # Allow firewall
-echo "DONE setting up ssh"
-sleep 1
+# -------------------------------------------------------------------
+# SSH setup
+# -------------------------------------------------------------------
+apt_install openssh-server
+sudo systemctl enable --now ssh
+sudo ufw allow ssh
+log "SSH installed and configured."
 
-# Install ROS2 Jazzy
-# https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html
+# -------------------------------------------------------------------
+# ROS2 Jazzy installation
+# Reference: https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html
+# -------------------------------------------------------------------
+log "Setting up ROS2 ${ROS_DISTRO}..."
 
-# Check locale
-wait_for_apt
-sudo apt install -y locales
-echo "DONE installing locales"
-sleep 1
+# Configure locale
+apt_install locales
 sudo locale-gen en_US en_US.UTF-8
-sleep 1
 sudo update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
-sleep 1
 export LANG=en_US.UTF-8
-echo "DONE setting up locales"
-sleep 1
+log "Locale configured."
 
-# Add the ROS 2 apt repository
-wait_for_apt
-sudo apt install -y software-properties-common
-echo "DONE installing software-properties-common"
-sleep 1
-wait_for_apt
+# Add ROS2 repository
+apt_install software-properties-common
 sudo add-apt-repository universe -y
-echo "DONE adding universe repo to apt"
-sleep 1
+apt_update
 
-# Install the ros2-apt-source package
-wait_for_apt
-sudo apt update
-echo "DONE updating apt 2nd times"
-sleep 1
-wait_for_apt
-sudo apt install -y curl
-echo "DONE installing curl"
-sleep 1
-export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F'"' '{print $4}')
-curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.$(. /etc/os-release && echo ${UBUNTU_CODENAME:-${VERSION_CODENAME}})_all.deb"
-wait_for_apt
-sudo dpkg -i /tmp/ros2-apt-source.deb
-echo "DONE installing ros2 apt source"
-sleep 1
+# Install ROS2 apt source package
+ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F'"' '{print $4}')
+UBUNTU_CODENAME=$(. /etc/os-release && echo "${UBUNTU_CODENAME:-${VERSION_CODENAME}}")
+ROS_APT_DEB="ros2-apt-source_${ROS_APT_SOURCE_VERSION}.${UBUNTU_CODENAME}_all.deb"
+curl -L -o "/tmp/${ROS_APT_DEB}" "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/${ROS_APT_DEB}"
 
-# Update apt now that universe + ROS repos are available
 wait_for_apt
-sudo apt update
-echo "DONE updating apt 3rd times"
-sleep 1
+sudo dpkg -i "/tmp/${ROS_APT_DEB}"
+log "ROS2 apt source installed."
 
-# Install build tools (correct package names, AFTER repos are added)
-wait_for_apt
-sudo apt install -y \
+# Update and install ROS tools
+apt_update
+apt_install \
     python3-colcon-common-extensions \
     python3-vcstool \
     python3-catkin-pkg \
     python3-rosdep \
     python3-pip
-echo "DONE installing colcon, vcstool, catkin-pkg, rosdep"
-sleep 1
+log "ROS2 build tools installed."
 
-# Initialise rosdep (safe to ignore error if already initialised)
+# Initialize rosdep
 sudo rosdep init || true
 rosdep update
-echo "DONE setting up rosdep"
-sleep 1
+log "rosdep initialized."
 
-# Install ROS2
-# wait_for_apt
-# sudo apt install -y ros-jazzy-desktop
-# echo "DONE installing ros2 jazzy desktop"
-# sleep 1
-wait_for_apt
-sudo apt install -y ros-jazzy-ros-base
-echo "DONE installing ros2 jazzy base"
-sleep 1
+# Install ROS2 base
+apt_install "ros-${ROS_DISTRO}-ros-base"
+log "ROS2 ${ROS_DISTRO} base installed."
 
-# Source it
-source /opt/ros/jazzy/setup.bash
-echo 'source /opt/ros/jazzy/setup.bash' >> ~/.bashrc
-echo "DONE sourcing ros2"
-sleep 1
+# Source ROS2
+source "/opt/ros/${ROS_DISTRO}/setup.bash"
+echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ~/.bashrc
+log "ROS2 sourced."
 
-# Install mavros
-wait_for_apt
-sudo apt install -y ros-jazzy-mavros ros-jazzy-mavros-extras
-echo "DONE installing mavros"
-sleep 1
+# -------------------------------------------------------------------
+# MAVROS installation
+# -------------------------------------------------------------------
+apt_install "ros-${ROS_DISTRO}-mavros" "ros-${ROS_DISTRO}-mavros-extras"
+log "MAVROS installed."
 
-# Install mavros's geographiclib datasets (needs root).
-# We run the script directly with 'sudo bash' instead of 'ros2 run',
-# because sudo does not preserve the sourced ROS environment.
-GEO_SCRIPT="$(ros2 pkg prefix mavros)/lib/mavros/install_geographiclib_datasets.sh"
+# Install geographiclib datasets
+GEO_SCRIPT="$(ros2 pkg prefix mavros 2>/dev/null)/lib/mavros/install_geographiclib_datasets.sh"
+if [ ! -f "$GEO_SCRIPT" ]; then
+    GEO_SCRIPT="$(find "/opt/ros/${ROS_DISTRO}" -name install_geographiclib_datasets.sh 2>/dev/null | head -n 1)"
+fi
+
 if [ -f "$GEO_SCRIPT" ]; then
     sudo bash "$GEO_SCRIPT"
+    log "MAVROS geographiclib datasets installed."
 else
-    GEO_SCRIPT="$(find /opt/ros/jazzy -name install_geographiclib_datasets.sh 2>/dev/null | head -n 1)"
-    if [ -n "$GEO_SCRIPT" ]; then
-        sudo bash "$GEO_SCRIPT"
-    else
-        echo "WARNING: install_geographiclib_datasets.sh not found!"
-    fi
+    log_error "install_geographiclib_datasets.sh not found!"
 fi
-echo "DONE installing mavros's geographic lib"
-sleep 1
 
-# Git clone
-cd ~/
-git clone https://github.com/Hang020713/Cartographer_test1.git
-echo "DONE cloning"
-sleep 1
+# -------------------------------------------------------------------
+# Clone and build Cartographer workspace
+# -------------------------------------------------------------------
+cd ~
+if [ ! -d "$WORKSPACE_NAME" ]; then
+    git clone "$WORKSPACE_REPO"
+    log "Cloned $WORKSPACE_NAME repository."
+else
+    log "$WORKSPACE_NAME already exists, pulling latest..."
+    cd "$WORKSPACE_NAME"
+    git pull
+fi
 
-# Start building inside
-cd Cartographer_test1
+cd "$WORKSPACE_NAME"
 rosdep install --from-paths src --ignore-src -r -y
-sleep 1
-
 colcon build --symlink-install
-echo "DONE building the Cartographer_test1"
-sleep 1
+log "$WORKSPACE_NAME built successfully."
 
 source install/setup.bash
-echo "DONE sourcing it"
-sleep 1
 
-# Install Micro XRCE-DDS Agent
-# https://docs.px4.io/main/en/middleware/uxrce_dds
-cd ~/
-git clone -b v2.4.3 https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
-echo "DONE cloning the Micro-XRCE-DDS-Agent"
-sleep 1
+# -------------------------------------------------------------------
+# Micro XRCE-DDS Agent installation
+# Reference: https://docs.px4.io/main/en/middleware/uxrce_dds
+# -------------------------------------------------------------------
+cd ~
+if [ ! -d "Micro-XRCE-DDS-Agent" ]; then
+    git clone -b "$MICRO_XRCE_VERSION" https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+fi
 
-# Sanity check: make sure a C++ compiler is available before building
+# Verify compiler availability
 if ! command -v g++ >/dev/null 2>&1; then
-    echo "ERROR: g++ not found. Installing build-essential..."
-    wait_for_apt
-    sudo apt install -y build-essential cmake
+    log_error "g++ not found. Installing build-essential..."
+    apt_install build-essential cmake
 fi
 
 cd Micro-XRCE-DDS-Agent
-mkdir -p build
-cd build
+mkdir -p build && cd build
 cmake ..
-make
+make -j"$(nproc)"
 sudo make install
-echo "DONE making the Micro-XRCE-DDS-Agent"
 sudo ldconfig /usr/local/lib/
-sleep 1
+log "Micro XRCE-DDS Agent installed."
 
-# Install the cartographer_ros package dependencies (after ROS2 is installed)
-wait_for_apt
-sudo apt install -y \
-    ros-jazzy-cartographer-ros \
-    ros-jazzy-cartographer-ros-msgs
-echo "DONE installing cartographer_ros dependencies"
-sleep 1
+# -------------------------------------------------------------------
+# Cartographer ROS dependencies
+# -------------------------------------------------------------------
+apt_install \
+    "ros-${ROS_DISTRO}-cartographer-ros" \
+    "ros-${ROS_DISTRO}-cartographer-ros-msgs"
+log "Cartographer ROS dependencies installed."
 
-# pinctrl
-sudo apt update
-sudo apt install -y cmake git device-tree-compiler build-essential libncurses5-dev libncursesw5-dev libfdt-dev
+# -------------------------------------------------------------------
+# Raspberry Pi utilities (pinctrl)
+# -------------------------------------------------------------------
+apt_install cmake git device-tree-compiler build-essential libncurses5-dev libncursesw5-dev libfdt-dev
 
 cd ~
-git clone https://github.com/raspberrypi/utils.git
-cd utils
+if [ ! -d "utils" ]; then
+    git clone https://github.com/raspberrypi/utils.git
+fi
 
-cmake .
-make
-sudo make install
+cd utils
+cmake . && make && sudo make install
 
 cd pinctrl
-cmake .
-make
-sudo make install
+cmake . && make && sudo make install
+log "pinctrl installed."
 
-# rpicam
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y git clang meson ninja-build pkg-config libyaml-dev python3-yaml python3-ply python3-jinja2 openssl
-sudo apt install -y libdw-dev libunwind-dev libudev-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libpython3-dev pybind11-dev libevent-dev libtiff-dev qt6-base-dev qt6-tools-dev-tools liblttng-ust-dev lttng-tools libexif-dev libjpeg-dev libgtest-dev abi-compliance-checker
-sudo apt install -y cmake libboost-program-options-dev libdrm-dev libexif-dev ffmpeg libavcodec-extra libavcodec-dev libavdevice-dev libpng-dev libpng-tools libepoxy-dev qt5-qmake qtmultimedia5-dev
+# -------------------------------------------------------------------
+# rpicam installation
+# -------------------------------------------------------------------
+sudo apt-get update && sudo apt-get upgrade -y
 
-# Clone the Raspberry Pi's libcamera repository
+apt_install \
+    git clang meson ninja-build pkg-config \
+    libyaml-dev python3-yaml python3-ply python3-jinja2 openssl \
+    libdw-dev libunwind-dev libudev-dev \
+    libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+    libpython3-dev pybind11-dev libevent-dev libtiff-dev \
+    qt6-base-dev qt6-tools-dev-tools \
+    liblttng-ust-dev lttng-tools libexif-dev libjpeg-dev \
+    libgtest-dev abi-compliance-checker \
+    cmake libboost-program-options-dev libdrm-dev ffmpeg \
+    libavcodec-extra libavcodec-dev libavdevice-dev \
+    libpng-dev libpng-tools libepoxy-dev \
+    qt5-qmake qtmultimedia5-dev
+
+# Build libcamera
 cd ~
-git clone https://github.com/raspberrypi/libcamera.git
-cd libcamera    
+if [ ! -d "libcamera" ]; then
+    git clone https://github.com/raspberrypi/libcamera.git
+fi
 
-# Configure the build
-meson setup build --buildtype=release -Dpipelines=rpi/vc4,rpi/pisp -Dipas=rpi/vc4,rpi/pisp -Dv4l2=true -Dgstreamer=enabled -Dtest=false -Dlc-compliance=disabled -Dcam=disabled -Dqcam=disabled -Ddocumentation=disabled -Dpycamera=enabled
-
-# Compile and install
+cd libcamera
+meson setup build --buildtype=release \
+    -Dpipelines=rpi/vc4,rpi/pisp \
+    -Dipas=rpi/vc4,rpi/pisp \
+    -Dv4l2=true \
+    -Dgstreamer=enabled \
+    -Dtest=false \
+    -Dlc-compliance=disabled \
+    -Dcam=disabled \
+    -Dqcam=disabled \
+    -Ddocumentation=disabled \
+    -Dpycamera=enabled
 sudo ninja -C build install
 
-
-# Go back to your home directory or another suitable location
+# Build rpicam-apps
 cd ~
+if [ ! -d "rpicam-apps" ]; then
+    git clone https://github.com/raspberrypi/rpicam-apps.git
+fi
 
-# Clone the rpicam-apps repository
-git clone https://github.com/raspberrypi/rpicam-apps.git
-cd rpicam-apps/
-
-# Configure the build. (Enable the features you need)
-meson setup build -Denable_libav=disabled -Denable_drm=enabled -Denable_egl=enabled -Denable_qt=enabled -Denable_opencv=disabled -Denable_tflite=disabled -Denable_hailo=disabled
-
-# Compile and install
+cd rpicam-apps
+meson setup build \
+    -Denable_libav=disabled \
+    -Denable_drm=enabled \
+    -Denable_egl=enabled \
+    -Denable_qt=enabled \
+    -Denable_opencv=disabled \
+    -Denable_tflite=disabled \
+    -Denable_hailo=disabled
 meson compile -C build
 sudo meson install -C build
 sudo ldconfig
+log "rpicam installed."
 
-# Add user to group permission
-sudo usermod -aG video $USER
+# -------------------------------------------------------------------
+# GPIO setup
+# -------------------------------------------------------------------
+apt_install gpiod libgpiod-dev python3-libgpiod python3-pip python3-gpiozero python3-lgpio
+sudo usermod -aG dialout "$USER"
+log "GPIO tools installed."
 
-# gpio
-sudo apt update
-sudo apt install -y gpiod libgpiod-dev python3-libgpiod python3-pip python3-gpiozero python3-lgpio
-sudo usermod -aG dialout $USER
+# -------------------------------------------------------------------
+# User permissions
+# -------------------------------------------------------------------
+sudo usermod -aG video "$USER"
+log "User added to video and dialout groups."
 
-# Re-enable background apt services
-echo "Re-enabling automatic apt services..."
-sudo systemctl start apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
-sudo systemctl start unattended-upgrades.service 2>/dev/null || true
+# -------------------------------------------------------------------
+# Cleanup and finalization
+# -------------------------------------------------------------------
+enable_apt_services
 
-echo "=====DONE All====="
+log "===== Installation Complete ====="
+log "Please reboot your system or log out and back in for group changes to take effect."
