@@ -99,7 +99,8 @@ apt_install \
     ca-certificates \
     gnupg \
     lsb-release \
-    network-manager
+    network-manager \
+    i2c-tools
 log "Core build toolchain and utilities installed."
 
 # -------------------------------------------------------------------
@@ -145,7 +146,12 @@ apt_install \
     python3-vcstool \
     python3-catkin-pkg \
     python3-rosdep \
-    python3-pip
+    python3-pip \
+    python3-lark
+# pip3 install colcon-common-extensions
+# pip3 install vcstool
+# pip3 install catkin-pkg
+# pip3 install rosdep
 log "ROS2 build tools installed."
 
 # Initialize rosdep
@@ -182,49 +188,6 @@ else
 fi
 
 # -------------------------------------------------------------------
-# Clone and build Cartographer workspace
-# -------------------------------------------------------------------
-cd ~
-if [ ! -d "$WORKSPACE_NAME" ]; then
-    git clone "$WORKSPACE_REPO"
-    log "Cloned $WORKSPACE_NAME repository."
-else
-    log "$WORKSPACE_NAME already exists, pulling latest..."
-    cd "$WORKSPACE_NAME"
-    git pull
-fi
-
-cd "$WORKSPACE_NAME"
-rosdep install --from-paths src --ignore-src -r -y
-colcon build --symlink-install
-log "$WORKSPACE_NAME built successfully."
-
-source install/setup.bash
-
-# -------------------------------------------------------------------
-# Micro XRCE-DDS Agent installation
-# Reference: https://docs.px4.io/main/en/middleware/uxrce_dds
-# -------------------------------------------------------------------
-cd ~
-if [ ! -d "Micro-XRCE-DDS-Agent" ]; then
-    git clone -b "$MICRO_XRCE_VERSION" https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
-fi
-
-# Verify compiler availability
-if ! command -v g++ >/dev/null 2>&1; then
-    log_error "g++ not found. Installing build-essential..."
-    apt_install build-essential cmake
-fi
-
-cd Micro-XRCE-DDS-Agent
-mkdir -p build && cd build
-cmake ..
-make -j"$(nproc)"
-sudo make install
-sudo ldconfig /usr/local/lib/
-log "Micro XRCE-DDS Agent installed."
-
-# -------------------------------------------------------------------
 # Cartographer ROS dependencies
 # -------------------------------------------------------------------
 apt_install \
@@ -256,7 +219,7 @@ sudo apt-get update && sudo apt-get upgrade -y
 
 apt_install \
     git clang meson ninja-build pkg-config \
-    libyaml-dev python3-yaml python3-ply python3-jinja2 openssl \
+    libyaml-dev openssl \
     libdw-dev libunwind-dev libudev-dev \
     libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
     libpython3-dev pybind11-dev libevent-dev libtiff-dev \
@@ -266,7 +229,12 @@ apt_install \
     cmake libboost-program-options-dev libdrm-dev ffmpeg \
     libavcodec-extra libavcodec-dev libavdevice-dev \
     libpng-dev libpng-tools libepoxy-dev \
-    qt5-qmake qtmultimedia5-dev
+    qt5-qmake qtmultimedia5-dev \
+    python3-yaml python3-ply python3-jinja2
+
+# pip3 install ply
+# pip3 install pyyaml
+# pip3 install jinja2
 
 # Build libcamera
 cd ~
@@ -312,6 +280,7 @@ log "rpicam installed."
 # GPIO setup
 # -------------------------------------------------------------------
 apt_install gpiod libgpiod-dev python3-libgpiod python3-pip python3-gpiozero python3-lgpio
+# pip3 install libgpiod gpiozero lgpio
 sudo usermod -aG dialout "$USER"
 log "GPIO tools installed."
 
@@ -327,54 +296,97 @@ echo "gpu_mem=128" | sudo tee -a "${BOOT_FIRMWARE}/config.txt"
 # -------------------------------------------------------------------
 # Device tree overlays for camera
 # -------------------------------------------------------------------
-# OVERLAYS_SRC="${HOME}/${WORKSPACE_NAME}/dtoverlays"
-# OVERLAYS_DEST="${BOOT_FIRMWARE}/overlays"
+OVERLAYS_SRC="${HOME}/${WORKSPACE_NAME}/dtoverlays"
+OVERLAYS_DEST="${BOOT_FIRMWARE}/overlays"
 
-# if [ -d "$OVERLAYS_SRC" ]; then
-#     # Ensure overlay destination exists
-#     sudo mkdir -p "$OVERLAYS_DEST"
+if [ -d "$OVERLAYS_SRC" ]; then
+    # Ensure overlay destination exists
+    sudo mkdir -p "$OVERLAYS_DEST"
     
-#     # Copy device tree overlays
-#     for overlay in imx708-cam0.dtbo imx708-cam1.dtbo; do
-#         if [ -f "${OVERLAYS_SRC}/${overlay}" ]; then
-#             sudo cp "${OVERLAYS_SRC}/${overlay}" "${OVERLAYS_DEST}/${overlay}"
-#             log "Copied ${overlay} to ${OVERLAYS_DEST}"
-#         else
-#             log_warning "${overlay} not found in ${OVERLAYS_SRC}"
-#         fi
-#     done
+    # Copy device tree overlays
+    for overlay in imx708-cam0.dtbo imx708-cam1.dtbo; do
+        if [ -f "${OVERLAYS_SRC}/${overlay}" ]; then
+            sudo cp "${OVERLAYS_SRC}/${overlay}" "${OVERLAYS_DEST}/${overlay}"
+            log "Copied ${overlay} to ${OVERLAYS_DEST}"
+        else
+            log_warning "${overlay} not found in ${OVERLAYS_SRC}"
+        fi
+    done
 
-#     # Append camera configuration to config files
-#     CONFIG_FILE="${BOOT_FIRMWARE}/config.txt"
-#     USERCFG_FILE="${BOOT_FIRMWARE}/usercfg.txt"
+    # Append camera configuration to config files
+    CONFIG_FILE="${BOOT_FIRMWARE}/config.txt"
+    USERCFG_FILE="${BOOT_FIRMWARE}/usercfg.txt"
 
-#     # Check if entries already exist before appending
-#     if ! grep -q "camera_auto_detect=0" "$USERCFG_FILE" 2>/dev/null; then
-#         echo "camera_auto_detect=0" | sudo tee -a "$USERCFG_FILE" > /dev/null
-#         log "Disabled camera auto-detect in usercfg.txt"
-#     else
-#         log "Camera auto-detect already disabled in usercfg.txt"
-#     fi
+    # Check if entries already exist before appending
+    if ! grep -q "camera_auto_detect=0" "$USERCFG_FILE" 2>/dev/null; then
+        echo "camera_auto_detect=0" | sudo tee -a "$USERCFG_FILE" > /dev/null
+        log "Disabled camera auto-detect in usercfg.txt"
+    else
+        log "Camera auto-detect already disabled in usercfg.txt"
+    fi
 
-#     if ! grep -q "dtoverlay=imx708-cam0" "$CONFIG_FILE" 2>/dev/null; then
-#         echo "dtoverlay=imx708-cam0" | sudo tee -a "$CONFIG_FILE" > /dev/null
-#         log "Added imx708-cam0 overlay to config.txt"
-#     else
-#         log "imx708-cam0 overlay already in config.txt"
-#     fi
+    if ! grep -q "dtoverlay=imx708-cam0" "$CONFIG_FILE" 2>/dev/null; then
+        echo "dtoverlay=imx708-cam0" | sudo tee -a "$CONFIG_FILE" > /dev/null
+        log "Added imx708-cam0 overlay to config.txt"
+    else
+        log "imx708-cam0 overlay already in config.txt"
+    fi
 
-#     if ! grep -q "dtoverlay=imx708-cam1" "$CONFIG_FILE" 2>/dev/null; then
-#         echo "dtoverlay=imx708-cam1" | sudo tee -a "$CONFIG_FILE" > /dev/null
-#         log "Added imx708-cam1 overlay to config.txt"
-#     else
-#         log "imx708-cam1 overlay already in config.txt"
-#     fi
+    if ! grep -q "dtoverlay=imx708-cam1" "$CONFIG_FILE" 2>/dev/null; then
+        echo "dtoverlay=imx708-cam1" | sudo tee -a "$CONFIG_FILE" > /dev/null
+        log "Added imx708-cam1 overlay to config.txt"
+    else
+        log "imx708-cam1 overlay already in config.txt"
+    fi
 
-#     log "Device tree overlays configured."
-# else
-#     log_warning "Overlay source directory not found: ${OVERLAYS_SRC}"
-#     log_warning "Make sure ${WORKSPACE_NAME} repository includes dtoverlays directory"
-# fi
+    log "Device tree overlays configured."
+else
+    log_warning "Overlay source directory not found: ${OVERLAYS_SRC}"
+    log_warning "Make sure ${WORKSPACE_NAME} repository includes dtoverlays directory"
+fi
+
+# -------------------------------------------------------------------
+# Clone and build Cartographer workspace
+# -------------------------------------------------------------------
+cd ~
+if [ ! -d "$WORKSPACE_NAME" ]; then
+    git clone "$WORKSPACE_REPO"
+    log "Cloned $WORKSPACE_NAME repository."
+else
+    log "$WORKSPACE_NAME already exists, pulling latest..."
+    cd "$WORKSPACE_NAME"
+    git pull
+fi
+
+cd "$WORKSPACE_NAME"
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --symlink-install
+log "$WORKSPACE_NAME built successfully."
+
+source install/setup.bash
+
+# -------------------------------------------------------------------
+# Micro XRCE-DDS Agent installation
+# Reference: https://docs.px4.io/main/en/middleware/uxrce_dds
+# -------------------------------------------------------------------
+cd ~
+if [ ! -d "Micro-XRCE-DDS-Agent" ]; then
+    git clone -b "$MICRO_XRCE_VERSION" https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+fi
+
+# Verify compiler availability
+if ! command -v g++ >/dev/null 2>&1; then
+    log_error "g++ not found. Installing build-essential..."
+    apt_install build-essential cmake
+fi
+
+cd Micro-XRCE-DDS-Agent
+mkdir -p build && cd build
+cmake ..
+make -j"$(nproc)"
+sudo make install
+sudo ldconfig /usr/local/lib/
+log "Micro XRCE-DDS Agent installed."
 
 # -------------------------------------------------------------------
 # Cleanup and finalization
