@@ -448,6 +448,9 @@ if [ -n "${MAVLINK_ROUTE_EN+x}" ]; then
     meson setup build .
     ninja -C build
     sudo ninja -C build install
+    
+    mkdir -p /etc/mavlink-router
+    sudo cp ~/${WORKSPACE_NAME}/main.conf /etc/mavlink-router/main.conf
 
     log "Mavlink router done."
 fi
