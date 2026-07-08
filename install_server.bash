@@ -137,24 +137,31 @@ sudo systemctl enable --now ssh
 sudo ufw allow ssh
 log "SSH installed and configured."
 
-# Hotspot
 # Create hotspot connection
-sudo nmcli connection add \
-  type wifi \
-  con-name Hotspot \
-  autoconnect yes \
-  wifi.mode ap \
-  wifi.ssid ${HOTSPOT_ID} \
-  ipv4.method shared \
-  ipv4.addresses ${HOTSPOT_IP}/24
-
-# Set WiFi password
-sudo nmcli connection modify Hotspot \
-  wifi-sec.key-mgmt wpa-psk \
-  wifi-sec.psk "${HOTSPOT_PASSWORD}"
+# Check if hotspot already exists
+if sudo nmcli connection show Hotspot &>/dev/null; then
+    log "Hotspot connection already exists, skipping creation..."
+else
+    # Create hotspot connection
+    sudo nmcli connection add \
+      type wifi \
+      con-name Hotspot \
+      autoconnect yes \
+      wifi.mode ap \
+      wifi.ssid ${HOTSPOT_ID} \
+      ipv4.method shared \
+      ipv4.addresses ${HOTSPOT_IP}/24
+    
+    # Set WiFi password
+    sudo nmcli connection modify Hotspot \
+      wifi-sec.key-mgmt wpa-psk \
+      wifi-sec.psk "${HOTSPOT_PASSWORD}"
+    
+    log "Hotspot configured."
+fi
 
 # Enable the hotspot
-sudo nmcli connection up Hotspot
+sudo nmcli connection up Hotspot || log_warning "Failed to start hotspot"
 
 # -------------------------------------------------------------------
 # ROS2 Jazzy installation
