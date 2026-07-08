@@ -16,6 +16,7 @@ WORKSPACE_REPO="https://github.com/Hang020713/Cartographer_test1.git"
 MICRO_XRCE_VERSION="v2.4.3"
 LOG_FILE="/tmp/install_$(date +%Y%m%d_%H%M%S).log"
 BOOT_FIRMWARE="/boot/firmware"
+PASSWORD="master"
 
 # -------------------------------------------------------------------
 # Helper functions
@@ -102,6 +103,12 @@ apt_install \
     network-manager \
     i2c-tools
 log "Core build toolchain and utilities installed."
+
+# Create a virtual environment for python3 and source in ~/.bashrc
+python3 -m venv ~/.venv
+echo "source ~/.venv/bin/activate" > ~/.bashrc
+echo "echo ${PASSWORD} | sudo chmod 777 /dev/ttyAMA0" > ~/.bashrc
+source ~/.bashrc
 
 # -------------------------------------------------------------------
 # SSH setup
