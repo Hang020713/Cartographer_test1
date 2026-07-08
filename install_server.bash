@@ -118,7 +118,7 @@ apt_install \
 log "Core build toolchain and utilities installed."
 
 # Create a virtual environment for python3 and source in ~/.bashrc
-if PYVENV_EN; then
+if $PYVENV_EN; then
     python3 -m venv ~/.venv
     echo "" >> ~/.bashrc
     echo "# Auto-activate virtual environment" >> ~/.bashrc
@@ -137,7 +137,7 @@ fi
 # -------------------------------------------------------------------
 # SSH setup
 # -------------------------------------------------------------------
-if SSH_EN; then
+if $SSH_EN; then
     apt_install openssh-server
     sudo systemctl enable --now ssh
     sudo ufw allow ssh
@@ -146,7 +146,7 @@ fi
 
 # Create hotspot connection
 # Check if hotspot already exists
-if HOTSPOT_EN; then
+if $HOTSPOT_EN; then
     log "Hotspot connection already exists, skipping creation..."
 else
     # Create hotspot connection
