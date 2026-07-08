@@ -7,6 +7,8 @@ set -euo pipefail
 # Not verified on every device - use at your own risk
 # =============================================================================
 
+# Features: venv, ssh, ros2, mavros, uXRCE, pinctrl, rpicam, GPIO
+
 # -------------------------------------------------------------------
 # Configuration
 # -------------------------------------------------------------------
@@ -17,6 +19,9 @@ MICRO_XRCE_VERSION="v2.4.3"
 LOG_FILE="/tmp/install_$(date +%Y%m%d_%H%M%S).log"
 BOOT_FIRMWARE="/boot/firmware"
 PASSWORD="master"
+
+# sudo ls -l first to get permission
+echo "${PASSWORD}" | sudo ls -l 
 
 # -------------------------------------------------------------------
 # Helper functions
@@ -106,8 +111,8 @@ log "Core build toolchain and utilities installed."
 
 # Create a virtual environment for python3 and source in ~/.bashrc
 python3 -m venv ~/.venv
-echo "source ~/.venv/bin/activate" > ~/.bashrc
-echo "echo ${PASSWORD} | sudo chmod 777 /dev/ttyAMA0" > ~/.bashrc
+echo "source ~/.venv/bin/activate" >> ~/.bashrc
+echo "echo ${PASSWORD} | sudo chmod 777 /dev/ttyAMA0" >> ~/.bashrc
 source ~/.bashrc
 
 # -------------------------------------------------------------------
