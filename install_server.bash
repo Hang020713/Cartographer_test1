@@ -22,6 +22,9 @@ PASSWORD="master"
 HOTSPOT_ID="testingcm5"
 HOTSPOT_PASSWORD="testingcm5"
 HOTSPOT_IP="10.42.0.1"
+PYVENV_EN=true
+SSH_EN=true
+HOTSPOT_EN=true
 
 # sudo ls -l first to get permission
 echo "${PASSWORD}" | sudo ls -l 
@@ -115,31 +118,35 @@ apt_install \
 log "Core build toolchain and utilities installed."
 
 # Create a virtual environment for python3 and source in ~/.bashrc
-python3 -m venv ~/.venv
-echo "" >> ~/.bashrc
-echo "# Auto-activate virtual environment" >> ~/.bashrc
-echo "source ~/.venv/bin/activate" >> ~/.bashrc
-echo "" >> ~/.bashrc
-echo "# Set ttyAMA0 permissions (consider using a udev rule instead)" >> ~/.bashrc
-echo "if [ -e /dev/ttyAMA0 ]; then" >> ~/.bashrc
-echo "    echo ${PASSWORD} | sudo -S chmod 666 /dev/ttyAMA0 2>/dev/null" >> ~/.bashrc
-echo "fi" >> ~/.bashrc
+if PYVENV_EN; then
+    python3 -m venv ~/.venv
+    echo "" >> ~/.bashrc
+    echo "# Auto-activate virtual environment" >> ~/.bashrc
+    echo "source ~/.venv/bin/activate" >> ~/.bashrc
+    echo "" >> ~/.bashrc
+    echo "# Set ttyAMA0 permissions (consider using a udev rule instead)" >> ~/.bashrc
+    echo "if [ -e /dev/ttyAMA0 ]; then" >> ~/.bashrc
+    echo "    echo ${PASSWORD} | sudo -S chmod 666 /dev/ttyAMA0 2>/dev/null" >> ~/.bashrc
+    echo "fi" >> ~/.bashrc
 
-# Note: venv activation added to .bashrc but not active in this script
-# Activate it now for subsequent commands
-source ~/.venv/bin/activate
+    # Note: venv activation added to .bashrc but not active in this script
+    # Activate it now for subsequent commands
+    source ~/.venv/bin/activate
+fi
 
 # -------------------------------------------------------------------
 # SSH setup
 # -------------------------------------------------------------------
-apt_install openssh-server
-sudo systemctl enable --now ssh
-sudo ufw allow ssh
-log "SSH installed and configured."
+if SSH_EN; then
+    apt_install openssh-server
+    sudo systemctl enable --now ssh
+    sudo ufw allow ssh
+    log "SSH installed and configured."
+fi
 
 # Create hotspot connection
 # Check if hotspot already exists
-if sudo nmcli connection show Hotspot &>/dev/null; then
+if HOTSPOT_EN; then
     log "Hotspot connection already exists, skipping creation..."
 else
     # Create hotspot connection
@@ -158,10 +165,13 @@ else
       wifi-sec.psk "${HOTSPOT_PASSWORD}"
     
     log "Hotspot configured."
+
+    # Enable the hotspot
+    sudo nmcli connection up Hotspot || log_warning "Failed to start hotspot"
 fi
 
-# Enable the hotspot
-sudo nmcli connection up Hotspot || log_warning "Failed to start hotspot"
+# tmp exit
+exit
 
 # -------------------------------------------------------------------
 # ROS2 Jazzy installation
