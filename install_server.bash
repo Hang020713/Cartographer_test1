@@ -22,17 +22,21 @@ PASSWORD="master"
 HOTSPOT_ID="testingcm5"
 HOTSPOT_PASSWORD="testingcm5"
 HOTSPOT_IP="10.42.0.1"
-PYVENV_EN=false
-SSH_EN=false
-HOTSPOT_EN=false
-ROS2_EN=false
-MAVROS_EN=false
-CARTO_EN=false
-UXRCE_EN=false
-PINCTRL_EN=false
-RPICAM_EN=false
-GPIO_EN=false
-OVERLAY_EN=false
+
+# Comment out any of these to disable the feature
+# PRE_INSTALL=1
+# PYVENV_EN=1
+# SSH_EN=1
+# HOTSPOT_EN=1
+# ROS2_EN=1
+# MAVROS_EN=1
+# CARTO_EN=1
+# UXRCE_EN=1
+# PINCTRL_EN=1
+# RPICAM_EN=1
+# GPIO_EN=1
+# OVERLAY_EN=1
+# MAVLINK_ROUTE_EN=1
 
 # sudo ls -l first to get permission
 echo "${PASSWORD}" | sudo ls -l 
@@ -102,31 +106,33 @@ sudo apt-get full-upgrade -y
 log "System updated successfully."
 
 # Install core build tools and utilities
-apt_install \
-    build-essential \
-    cmake \
-    g++ \
-    git \
-    pkg-config \
-    curl \
-    wget \
-    vim \
-    nano \
-    htop \
-    net-tools \
-    unzip \
-    software-properties-common \
-    ca-certificates \
-    gnupg \
-    lsb-release \
-    network-manager \
-    i2c-tools \
-    python3-pip \
-    python3-venv
-log "Core build toolchain and utilities installed."
+if [ -n "${PRE_INSTALL+x}" ]; then
+    apt_install \
+        build-essential \
+        cmake \
+        g++ \
+        git \
+        pkg-config \
+        curl \
+        wget \
+        vim \
+        nano \
+        htop \
+        net-tools \
+        unzip \
+        software-properties-common \
+        ca-certificates \
+        gnupg \
+        lsb-release \
+        network-manager \
+        i2c-tools \
+        python3-pip \
+        python3-venv
+    log "Core build toolchain and utilities installed."
+fi
 
 # Create a virtual environment for python3 and source in ~/.bashrc
-if [ "$PYVENV_EN" = true ]; then
+if [ -n "${PYVENV_EN+x}" ]; then
     python3 -m venv ~/.venv
     echo "" >> ~/.bashrc
     echo "# Auto-activate virtual environment" >> ~/.bashrc
@@ -142,7 +148,7 @@ source ~/.venv/bin/activate
 # -------------------------------------------------------------------
 # SSH setup
 # -------------------------------------------------------------------
-if [ "$SSH_EN" = true ]; then
+if [ -n "${SSH_EN+x}" ]; then
     apt_install openssh-server
     sudo systemctl enable --now ssh
     sudo ufw allow ssh
@@ -151,7 +157,7 @@ fi
 
 # Create hotspot connection
 # Check if hotspot already exists
-if [ "$HOTSPOT_EN" = true ]; then
+if [ -n "${HOTSPOT_EN+x}" ]; then
     # Create hotspot connection
     sudo nmcli connection add \
       type wifi \
@@ -177,7 +183,7 @@ fi
 # ROS2 Jazzy installation
 # Reference: https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html
 # -------------------------------------------------------------------
-if [ "$ROS2_EN" = true ]; then
+if [ -n "${ROS2_EN+x}" ]; then
     log "Setting up ROS2 ${ROS_DISTRO}..."
 
     # Configure locale
@@ -224,10 +230,11 @@ if [ "$ROS2_EN" = true ]; then
     sleep 1
 
     # Source ROS2
+    # echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
     export AMENT_PYTHON_EXECUTABLE=/usr/bin/python3
-    export AMENT_TRACE_SETUP_FILES=0
-    source "/opt/ros/${ROS_DISTRO}/setup.bash"
-    echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ~/.bashrc
+    set +u
+    source /opt/ros/jazzy/setup.bash
+    set -u
     log "ROS2 sourced."
     sleep 1
 
@@ -240,7 +247,7 @@ fi
 # -------------------------------------------------------------------
 # MAVROS installation
 # -------------------------------------------------------------------
-if [ "$MAVROS_EN" = true ]; then
+if [ -n "${MAVROS_EN+x}" ]; then
     apt_install "ros-${ROS_DISTRO}-mavros" "ros-${ROS_DISTRO}-mavros-extras"
     log "MAVROS installed."
 
@@ -261,7 +268,7 @@ fi
 # -------------------------------------------------------------------
 # Clone and build Cartographer workspace
 # -------------------------------------------------------------------
-if [ "$CARTO_EN" = true ]; then
+if [ -n "${CARTO_EN+x}" ]; then
     cd ~
     if [ ! -d "$WORKSPACE_NAME" ]; then
         git clone "$WORKSPACE_REPO"
@@ -276,15 +283,17 @@ if [ "$CARTO_EN" = true ]; then
     rosdep install --from-paths src --ignore-src -r -y
     colcon build --symlink-install
     log "$WORKSPACE_NAME built successfully."
-
+    
+    set +u
     source install/setup.bash
+    set -u
 fi
 
 # -------------------------------------------------------------------
 # Micro XRCE-DDS Agent installation
 # Reference: https://docs.px4.io/main/en/middleware/uxrce_dds
 # -------------------------------------------------------------------
-if [ "$UXRCE_EN" = true ]; then
+if [ -n "${UXRCE_EN+x}" ]; then
     cd ~
     if [ ! -d "Micro-XRCE-DDS-Agent" ]; then
         git clone -b "$MICRO_XRCE_VERSION" https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
@@ -308,7 +317,7 @@ fi
 # -------------------------------------------------------------------
 # Raspberry Pi utilities (pinctrl)
 # -------------------------------------------------------------------
-if [ "$PINCTRL_EN" = true ]; then
+if [ -n "${PINCTRL_EN+x}" ]; then
     apt_install cmake git device-tree-compiler build-essential libncurses5-dev libncursesw5-dev libfdt-dev
 
     cd ~
@@ -328,7 +337,7 @@ fi
 # -------------------------------------------------------------------
 # rpicam installation
 # -------------------------------------------------------------------
-if [ "$RPICAM_EN" = true ]; then
+if [ -n "${RPICAM_EN+x}" ]; then
     sudo apt-get update && sudo apt-get upgrade -y
 
     apt_install \
@@ -346,9 +355,9 @@ if [ "$RPICAM_EN" = true ]; then
         qt5-qmake qtmultimedia5-dev \
         python3-yaml python3-ply python3-jinja2
 
-    # pip3 install ply
-    # pip3 install pyyaml
-    # pip3 install jinja2
+    pip3 install ply
+    pip3 install pyyaml
+    pip3 install jinja2
 
     # Build libcamera
     cd ~
@@ -394,9 +403,9 @@ fi
 # -------------------------------------------------------------------
 # GPIO setup
 # -------------------------------------------------------------------
-if [ "$GPIO_EN" = true ]; then
+if [ -n "${GPIO_EN+x}" ]; then
     apt_install gpiod libgpiod-dev python3-libgpiod python3-pip python3-gpiozero python3-lgpio
-    pip3 install libgpiod gpiozero lgpio
+    pip3 install gpiozero lgpio
     sudo usermod -aG dialout "$USER"
     log "GPIO tools installed."
 fi
@@ -413,13 +422,34 @@ log "User added to video and dialout groups."
 # -------------------------------------------------------------------
 # Device tree overlays for camera
 # -------------------------------------------------------------------
-if [ "$OVERLAY_EN" = true ]; then
+if [ -n "${OVERLAY_EN+x}" ]; then
     sudo cp ~/${WORKSPACE_NAME}/dtoverlays/imx708-cam0.dtbo /boot/firmware/overlays/imx708-cam0.dtbo
     sudo cp ~/${WORKSPACE_NAME}/dtoverlays/imx708-cam1.dtbo /boot/firmware/overlays/imx708-cam1.dtbo
 
     # Replace the /boot/firmware/config.txt
     sudo rm /boot/firmware/config.txt
     sudo cp ~/${WORKSPACE_NAME}/config.txt /boot/firmware/config.txt
+
+    sudo rm /boot/firmware/cmdline.txt
+    sudo cp ~/${WORKSPACE_NAME}/cmdline.txt /boot/firmware/cmdline.txt
+
+    log "dtoverlay done."
+fi
+
+# Mavlink_router
+if [ -n "${MAVLINK_ROUTE_EN+x}" ]; then
+    sudo apt-get install git meson ninja-build gcc g++ pkg-config systemd
+
+    cd ~
+    git clone https://github.com/mavlink-router/mavlink-router.git
+    cd mavlink-router
+    git submodule update --init --recursive
+
+    meson setup build .
+    ninja -C build
+    sudo ninja -C build install
+
+    log "Mavlink router done."
 fi
 
 # -------------------------------------------------------------------
