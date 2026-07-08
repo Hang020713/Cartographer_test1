@@ -62,6 +62,7 @@ dtoverlay=uart2-pi5
 dtoverlay=uart3-pi5,ctsrts
 dtoverlay=uart4-pi5
 dtoverlay=vc4-kms-v3d,cma-512
+dtoverlay=i2c3-pi5,pins_6_7
 gpu_mem=128
 camera_auto_detect=0
 dtoverlay=imx708-cam0
