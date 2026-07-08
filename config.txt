@@ -67,3 +67,5 @@ gpu_mem=128
 camera_auto_detect=0
 dtoverlay=imx708-cam0
 dtoverlay=imx708-cam1
+dtoverlay=pwm-pi5
+dtparam=pwm0_clock=10000000
