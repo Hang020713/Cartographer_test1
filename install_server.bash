@@ -229,19 +229,19 @@ if [ -n "${ROS2_EN+x}" ]; then
     log "ROS2 ${ROS_DISTRO} base installed."
     sleep 1
 
+    apt_install \
+        "ros-${ROS_DISTRO}-cartographer-ros" \
+        "ros-${ROS_DISTRO}-cartographer-ros-msgs"
+    log "Cartographer ROS dependencies installed."
+
     # Source ROS2
-    # echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
+    echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc
     export AMENT_PYTHON_EXECUTABLE=/usr/bin/python3
     set +u
     source /opt/ros/jazzy/setup.bash
     set -u
     log "ROS2 sourced."
     sleep 1
-
-    apt_install \
-        "ros-${ROS_DISTRO}-cartographer-ros" \
-        "ros-${ROS_DISTRO}-cartographer-ros-msgs"
-    log "Cartographer ROS dependencies installed."
 fi
 
 # -------------------------------------------------------------------
@@ -279,7 +279,7 @@ if [ -n "${CARTO_EN+x}" ]; then
         git pull
     fi
 
-    cd "$WORKSPACE_NAME"
+    cd ~/"$WORKSPACE_NAME"
     rosdep install --from-paths src --ignore-src -r -y
     colcon build --symlink-install
     log "$WORKSPACE_NAME built successfully."
@@ -397,6 +397,8 @@ if [ -n "${RPICAM_EN+x}" ]; then
     meson compile -C build
     sudo meson install -C build
     sudo ldconfig
+
+    sudo usermod -aG video "$USER"
     log "rpicam installed."
 fi
 
@@ -409,12 +411,6 @@ if [ -n "${GPIO_EN+x}" ]; then
     sudo usermod -aG dialout "$USER"
     log "GPIO tools installed."
 fi
-
-# -------------------------------------------------------------------
-# User permissions
-# -------------------------------------------------------------------
-sudo usermod -aG video "$USER"
-log "User added to video and dialout groups."
 
 # echo "dtoverlay=vc4-kms-v3d,cma-512" | sudo tee -a "${BOOT_FIRMWARE}/config.txt"
 # echo "gpu_mem=128" | sudo tee -a "${BOOT_FIRMWARE}/config.txt"
