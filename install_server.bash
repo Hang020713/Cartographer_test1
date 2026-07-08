@@ -19,6 +19,9 @@ MICRO_XRCE_VERSION="v2.4.3"
 LOG_FILE="/tmp/install_$(date +%Y%m%d_%H%M%S).log"
 BOOT_FIRMWARE="/boot/firmware"
 PASSWORD="master"
+HOTSPOT_ID="testingcm5"
+HOTSPOT_PASSWORD="testingcm5"
+HOTSPOT_IP="10.42.0.1"
 
 # sudo ls -l first to get permission
 echo "${PASSWORD}" | sudo ls -l 
@@ -106,14 +109,25 @@ apt_install \
     gnupg \
     lsb-release \
     network-manager \
-    i2c-tools
+    i2c-tools \
+    python3-pip \
+    python3-venv
 log "Core build toolchain and utilities installed."
 
 # Create a virtual environment for python3 and source in ~/.bashrc
 python3 -m venv ~/.venv
+echo "" >> ~/.bashrc
+echo "# Auto-activate virtual environment" >> ~/.bashrc
 echo "source ~/.venv/bin/activate" >> ~/.bashrc
-echo "echo ${PASSWORD} | sudo chmod 777 /dev/ttyAMA0" >> ~/.bashrc
-source ~/.bashrc
+echo "" >> ~/.bashrc
+echo "# Set ttyAMA0 permissions (consider using a udev rule instead)" >> ~/.bashrc
+echo "if [ -e /dev/ttyAMA0 ]; then" >> ~/.bashrc
+echo "    echo ${PASSWORD} | sudo -S chmod 666 /dev/ttyAMA0 2>/dev/null" >> ~/.bashrc
+echo "fi" >> ~/.bashrc
+
+# Note: venv activation added to .bashrc but not active in this script
+# Activate it now for subsequent commands
+source ~/.venv/bin/activate
 
 # -------------------------------------------------------------------
 # SSH setup
@@ -122,6 +136,25 @@ apt_install openssh-server
 sudo systemctl enable --now ssh
 sudo ufw allow ssh
 log "SSH installed and configured."
+
+# Hotspot
+# Create hotspot connection
+sudo nmcli connection add \
+  type wifi \
+  con-name Hotspot \
+  autoconnect yes \
+  wifi.mode ap \
+  wifi.ssid ${HOTSPOT_ID} \
+  ipv4.method shared \
+  ipv4.addresses ${HOTSPOT_IP}/24
+
+# Set WiFi password
+sudo nmcli connection modify Hotspot \
+  wifi-sec.key-mgmt wpa-psk \
+  wifi-sec.psk "${HOTSPOT_PASSWORD}"
+
+# Enable the hotspot
+sudo nmcli connection up Hotspot
 
 # -------------------------------------------------------------------
 # ROS2 Jazzy installation
@@ -158,7 +191,6 @@ apt_install \
     python3-vcstool \
     python3-catkin-pkg \
     python3-rosdep \
-    python3-pip \
     python3-lark
 # pip3 install colcon-common-extensions
 # pip3 install vcstool
@@ -227,6 +259,9 @@ colcon build --symlink-install
 log "$WORKSPACE_NAME built successfully."
 
 source install/setup.bash
+echo "" >> ~/.bashrc
+echo "# Source ROS2 workspace" >> ~/.bashrc
+echo "source ~/${WORKSPACE_NAME}/install/setup.bash" >> ~/.bashrc
 
 # -------------------------------------------------------------------
 # Micro XRCE-DDS Agent installation
@@ -347,8 +382,8 @@ log "GPIO tools installed."
 sudo usermod -aG video "$USER"
 log "User added to video and dialout groups."
 
-echo "dtoverlay=vc4-kms-v3d,cma-512" | sudo tee -a "${BOOT_FIRMWARE}/config.txt"
-echo "gpu_mem=128" | sudo tee -a "${BOOT_FIRMWARE}/config.txt"
+# echo "dtoverlay=vc4-kms-v3d,cma-512" | sudo tee -a "${BOOT_FIRMWARE}/config.txt"
+# echo "gpu_mem=128" | sudo tee -a "${BOOT_FIRMWARE}/config.txt"
 
 # -------------------------------------------------------------------
 # Device tree overlays for camera
@@ -358,7 +393,7 @@ sudo cp ~/${WORKSPACE_NAME}/dtoverlays/imx708-cam1.dtbo /boot/firmware/overlays/
 
 # Replace the /boot/firmware/config.txt
 sudo rm /boot/firmware/config.txt
-sudo cp cp ~/${WORKSPACE_NAME}/config.txt /boot/firmware/config.txt
+sudo cp ~/${WORKSPACE_NAME}/config.txt /boot/firmware/config.txt
 
 # -------------------------------------------------------------------
 # Cleanup and finalization
