@@ -10,7 +10,6 @@
             pwm_pins: pwm_pins {
                 pins = "gpio18", "gpio19";
                 function = "pwm0", "pwm0";
-                // 重要：驱动强度设置避免信号失真
                 bias-disable;
                 drive-strength = <8>;
             };
@@ -23,7 +22,6 @@
             pinctrl-names = "default";
             pinctrl-0 = <&pwm_pins>;
             status = "okay";
-            // 启用双通道模式
             #pwm-cells = <2>;
         };
     };
