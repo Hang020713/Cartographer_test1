@@ -37,6 +37,7 @@ HOTSPOT_IP="10.42.0.1"
 # GPIO_EN=1
 # OVERLAY_EN=1
 # MAVLINK_ROUTE_EN=1
+# PWM_EN=1
 
 # sudo ls -l first to get permission
 echo "${PASSWORD}" | sudo ls -l 
@@ -416,11 +417,12 @@ fi
 # echo "gpu_mem=128" | sudo tee -a "${BOOT_FIRMWARE}/config.txt"
 
 # -------------------------------------------------------------------
-# Device tree overlays for camera
+# Device tree overlays for camera & PWM
 # -------------------------------------------------------------------
 if [ -n "${OVERLAY_EN+x}" ]; then
     sudo cp ~/${WORKSPACE_NAME}/dtoverlays/imx708-cam0.dtbo /boot/firmware/overlays/imx708-cam0.dtbo
     sudo cp ~/${WORKSPACE_NAME}/dtoverlays/imx708-cam1.dtbo /boot/firmware/overlays/imx708-cam1.dtbo
+    sudo cp ~/${WORKSPACE_NAME}/dtoverlays/pwm-pi5.dtbo /boot/firmware/overlays/pwm-pi5.dtbo
 
     # Replace the /boot/firmware/config.txt
     sudo rm /boot/firmware/config.txt
@@ -450,6 +452,7 @@ if [ -n "${MAVLINK_ROUTE_EN+x}" ]; then
 
     log "Mavlink router done."
 fi
+
 
 # -------------------------------------------------------------------
 # Cleanup and finalization
