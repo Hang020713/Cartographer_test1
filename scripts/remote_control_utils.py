@@ -3,6 +3,15 @@ import time
 import os
 import serial.tools.list_ports
 
+def select_baudrate(baudrate=115200):
+    try:
+        BAUDRATE = int(input(f"Enter baud rate for receiving data (default {baudrate}): ") or baudrate)
+    except ValueError:
+        print("Invalid baud rate. Using default 115200.")
+        BAUDRATE = baudrate
+    finally:
+        return BAUDRATE
+
 def select_serial_port(port=None):
     """
     List available serial ports and allow user to select one.
@@ -105,7 +114,7 @@ def send_msg(ser, msg, wait_time=1, end_char='\n'):
         return f"Error: {e}"
 
 
-def send_bytes(ser, byte_data, wait_time=1, end_char='\n'):
+def send_bytes(ser, byte_data, wait_time=1, end_char='\n', read_response=True, debug=False):
     """
     Send raw bytes over an active serial connection and return the response.
     """
@@ -115,13 +124,19 @@ def send_bytes(ser, byte_data, wait_time=1, end_char='\n'):
 
     try:
         rf_send_command = f"AT+rf_send={CNTS},{INTERVAL},{LEN}"
-        print(f"Sending command: {rf_send_command}")
+        
+        if debug:
+            print(f"Sending command: {rf_send_command}")
+
         ser.write((rf_send_command + end_char).encode())
         time.sleep(0.1)
 
         ser.write(byte_data)
 
-        response = ser.read(ser.in_waiting)
-        return response.decode('utf-8', errors='ignore')
+        if read_response:
+            response = ser.read(ser.in_waiting)
+            return response.decode('utf-8', errors='ignore')
+        else:
+            return "OK"
     except Exception as e:
         return f"Error: {e}"
