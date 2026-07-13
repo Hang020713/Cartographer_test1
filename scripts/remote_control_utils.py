@@ -2,6 +2,93 @@ import serial
 import time
 import os
 import serial.tools.list_ports
+from enum import IntEnum
+
+INQUERY_PAYLOAD_LEN = 7
+STATUS_PAYLOAD_LEN = 4
+
+class COMMANDS(IntEnum):
+    REQUEST_STATUS = 0
+    REQUEST_MAP = 1
+    SET_MODE = 2
+    MANUAL_CONTROL = 3
+
+def get_command_type(command_type: byte):
+    try:
+        return COMMANDS(int.from_bytes(command_type, byteorder='big'))
+    except ValueError:
+        return "N/A"
+
+class MODES(IntEnum):
+    IDLE = 1
+    PRE_WASH = 2
+    AUTO = 3
+    MANUAL = 4
+
+def get_mode(mode: byte):
+    try:
+        return MODES(int.from_bytes(mode, byteorder='big'))
+    except ValueError:
+        return "N/A"
+
+class MODE_STATUS(IntEnum):
+    SUCCESS = 0
+    FAIL = 1
+    ONGOING = 2
+
+def get_mode_status(mode_status: byte):
+    try:
+        return MODE_STATUS(int.from_bytes(mode_status, byteorder='big'))
+    except ValueError:
+        return "N/A"
+
+def raw_to_percent(
+    raw: int,
+    raw_min: int,
+    raw_max: int,
+    raw_center: int,
+) -> int:
+    raw = max(raw_min, min(raw_max, raw))
+
+    if raw < raw_center:
+        if raw_center <= raw_min:
+            return 0
+        return int(round(-100 + ((raw - raw_min) / (raw_center - 1 - raw_min)) * 99))
+
+    if raw == raw_center:
+        return 0
+
+    if raw_center >= raw_max:
+        return 100
+
+    return int(round(1 + ((raw - (raw_center + 1)) / (raw_max - (raw_center + 1))) * 99))
+
+def percent_to_pwm(
+    pct: int,
+    pwm_min: int,
+    pwm_max: int,
+    pwm_center: int,
+) -> int:
+    pct = max(-100, min(100, pct))
+    if pct < 0:
+        return int(round(pwm_center + (pct / 100.0) * (pwm_center - pwm_min)))
+    return int(round(pwm_center + (pct / 100.0) * (pwm_max - pwm_center)))
+
+def read_frame(ser, start_byte, payload_length):
+    # Look for start byte (Message ID byte)
+    while True:
+        b = ser.read(1)
+        if not b:                     # timeout, nothing available
+            return None
+        if b[0] == start_byte:
+            break
+
+    # Read the fixed-length payload
+    frame = ser.read(payload_length - 1)
+    if len(frame) < (payload_length - 1):        # incomplete -> resync next loop
+        return None
+
+    return frame
 
 def select_baudrate(baudrate=115200):
     try:

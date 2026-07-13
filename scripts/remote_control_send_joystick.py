@@ -1,6 +1,9 @@
 import remote_control_utils as rc_utils
 import time
 import threading
+from enum import IntEnum
+
+HAVE_JOYSTICK=False
 
 # Functions parameters
 INPUT_PORT=None
@@ -9,28 +12,24 @@ SEND_PORT=None  # Serial port to be selected by the user
 SEND_BAUDRATE=None  # Baud rate for the serial communication
 END_CHAR='\n'  # End character for the command
 
+MESSAGE_ID = 0xAA
+ID = 0x00
+
 # Manual Command parameters
-mapped_left_x = 127
-mapped_left_y = 127
-mapped_right_x = 127
-mapped_right_y = 127
+mapped_left_x = 255
+mapped_left_y = 0
+mapped_right_x = 255
+mapped_right_y = 0
 
 # Threads
 program_stop_event = threading.Event()
-send_stop_event = threading.Event()
 joystick_lock = threading.Lock()
 read_thread = None
-send_thread = None
 
 def read_joystick_thread():
     while not program_stop_event.is_set():
         read_joystick()
         # time.sleep(0.01)
-
-def send_manual_command_thread():
-    while not program_stop_event.is_set() and not send_stop_event.is_set():
-        send_manual_command()
-        time.sleep(0.1)
 
 # Joystick functions
 def map_joystick_value(x):
@@ -61,40 +60,43 @@ def read_joystick():
         # print(f"Right Joystick X raw: {right_joystick_x} ({right_joystick_x:02x}h) → mapped: {mapped_right_x}")
         # print(f"Right Joystick Y raw: {right_joystick_y} ({right_joystick_y:02x}h) → mapped: {mapped_right_y}")
 
-def send_manual_command():
+def send_manual_control():
     global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y
 
-    with joystick_lock:
-        left_x = mapped_left_x
-        left_y = mapped_left_y
-        right_x = mapped_right_x
-        right_y = mapped_right_y
+    byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.MANUAL_CONTROL, mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y])
+    read_response=True
+    response = rc_utils.send_bytes(send_ser, byte_data, wait_time=0.3, read_response=read_response)
+    return response
 
-    byte_data = bytes([left_x, left_y, right_x, right_y])
-    response = rc_utils.send_bytes(send_ser, byte_data, wait_time=0.1, read_response=False)
-    # print(f"Response: {response}\n-EOF")
+def send_request_status():
+    byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.REQUEST_STATUS, 0x00, 0x00, 0x00, 0x00])
+    read_response=True
+    response = rc_utils.send_bytes(send_ser, byte_data, wait_time=0.3, read_response=read_response)
+    return response
 
 # Main Function
 if __name__ == "__main__":
-    # Input serial port and baud rate for receiving data
-    print("-------------Receive Serial Port START-----------------\n")
-    INPUT_BAUDRATE = rc_utils.select_baudrate(115200)
-    print(f"Selected baudrate: {INPUT_BAUDRATE}")
-    
-    # Select the serial port for receiving data
-    INPUT_PORT = rc_utils.select_serial_port(INPUT_PORT)
-    print(f"Selected port for receiving data: {INPUT_PORT}")
+    input_ser = None
+    if HAVE_JOYSTICK:
+        # Input serial port and baud rate for receiving data
+        print("-------------Receive Serial Port START-----------------\n")
+        INPUT_BAUDRATE = rc_utils.select_baudrate(115200)
+        print(f"Selected baudrate: {INPUT_BAUDRATE}")
+        
+        # Select the serial port for receiving data
+        INPUT_PORT = rc_utils.select_serial_port(INPUT_PORT)
+        print(f"Selected port for receiving data: {INPUT_PORT}")
 
-    # Check port selected
-    if INPUT_PORT is None:
-        print("No port selected. Exiting.")
-        raise SystemExit(1)
+        # Check port selected
+        if INPUT_PORT is None:
+            print("No port selected. Exiting.")
+            raise SystemExit(1)
 
-    # Init serial connection
-    input_ser = rc_utils.init_serial_connection(INPUT_PORT, INPUT_BAUDRATE)
-    if input_ser is None:
-        raise SystemExit(1)
-    print("-------------Receive Serial Port END-----------------\n")
+        # Init serial connection
+        input_ser = rc_utils.init_serial_connection(INPUT_PORT, INPUT_BAUDRATE)
+        if input_ser is None:
+            raise SystemExit(1)
+        print("-------------Receive Serial Port END-----------------\n")
 
     # Send serial port and baud rate selection
     print("-------------Send Serial Port START-----------------\n")
@@ -123,16 +125,16 @@ if __name__ == "__main__":
     else:
         print("Configuration command failed or returned unexpected response.")
         input_ser.close()
-        send_ser.close() # Close connection before exiting
+        send_ser.close()
         raise SystemExit(1)
     print("-------------Send Serial Port END-----------------\n")
 
     program_stop_event.clear()
-    send_stop_event.set()
-    if read_thread is None or not read_thread.is_alive():
-        read_thread = threading.Thread(target=read_joystick_thread, daemon=True)
-        read_thread.start()
-    print("Joystick reader thread started and will keep running.")
+    if HAVE_JOYSTICK:
+        if read_thread is None and not read_thread.is_alive():
+            read_thread = threading.Thread(target=read_joystick_thread, daemon=True)
+            read_thread.start()
+        print("Joystick reader thread started and will keep running.")
 
     # Command Logic
     try:
@@ -140,7 +142,8 @@ if __name__ == "__main__":
             choice = input('''Select an option:
 0: exit program
 1: Set Mode
-2: Stop manual sending (reader stays active)
+2: Keep sending manual command
+3: Request status
 Enter your choice: ''').strip()
             if choice == "0":
                 print("Exiting program.")
@@ -148,33 +151,61 @@ Enter your choice: ''').strip()
             elif choice == "1":
                 print("TESTING NOT AVAILABLE")
             elif choice == "2":
-                if send_thread is not None and send_thread.is_alive():
-                    print("Manual sending is already running. Press Ctrl+C to stop it.")
-                else:
-                    print("Starting manual sending. Press Ctrl+C to stop and return to the menu.")
-                    send_stop_event.clear()
-                    send_thread = threading.Thread(target=send_manual_command_thread, daemon=True)
-                    send_thread.start()
+                print("Starting manual sending. Press Ctrl+C to stop and return to the menu.")
 
+                flag = True
+                while True:
                     try:
-                        while True:
-                            time.sleep(0.5)
+                        # Send manual command
+                        print(send_manual_control())
+                        time.sleep(0.05)
+                        print("Sent done")
+
+                        # Ask for status
+                        print(send_request_status())
+                        # time.sleep(0.5)
+                        print("request done")
+
+                        # Program end
+                        if not flag:
+                            break
+
+                        # Wait for status response
+                        received_data = rc_utils.read_frame(send_ser, MESSAGE_ID, rc_utils.STATUS_PAYLOAD_LEN)
+                        if received_data is None:
+                            continue
+                        print(received_data)
+
+                        mode = received_data[1:2]
+                        mode_status = received_data[2:3]
+                        print(f"mode: {rc_utils.get_mode(mode).name}")
+                        print(f"mode_status: {rc_utils.get_mode_status(mode_status).name}")
                     except KeyboardInterrupt:
                         print("Stopping manual sending. Returning to the menu.")
-                        send_stop_event.set()
-                        if send_thread is not None:
-                            send_thread.join(timeout=1)
-                            send_thread = None
+                        flag = False
+
+            elif choice == "3":
+                byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.REQUEST_STATUS, 0x00, 0x00, 0x00, 0x00])
+                response = rc_utils.send_bytes(send_ser, byte_data, read_response=False)
+                # print(f"Response: {response}\n-EOF")
+
+                # Wait for status response
+                received_data = rc_utils.read_frame(send_ser, MESSAGE_ID, rc_utils.STATUS_PAYLOAD_LEN)
+                if received_data is None:
+                    continue
+                print(received_data)
+
+                mode = received_data[1:2]
+                mode_status = received_data[2:3]
+                print(f"mode: {rc_utils.get_mode(mode).name}")
+                print(f"mode_status: {rc_utils.get_mode_status(mode_status).name}")
             else:
                 print("Invalid choice. Exiting.")
     except KeyboardInterrupt:
         print("Exiting program.")
     finally:
         program_stop_event.set()
-        send_stop_event.set()
         if read_thread is not None:
             read_thread.join(timeout=1)
-        if send_thread is not None:
-            send_thread.join(timeout=1)
-        input_ser.close()
+        if not input_ser == None: input_ser.close()
         send_ser.close()
