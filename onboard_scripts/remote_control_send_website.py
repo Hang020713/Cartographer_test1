@@ -186,6 +186,32 @@ DASHBOARD_HTML = """
         .badge .k { color: #64748b; font-size: 0.7rem; text-transform: uppercase; }
         .badge .v { color: #38bdf8; font-weight: 600; margin-top: 2px; }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .joystick-widget {
+            background: #0f172a; border-radius: 10px; padding: 12px;
+            display: flex; justify-content: center; align-items: center;
+            margin-top: 6px;
+        }
+        .joystick-base {
+            position: relative; width: 140px; height: 140px; border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #334155, #020617 70%);
+            border: 2px solid #475569; box-shadow: inset 0 0 0 6px rgba(255,255,255,0.03);
+        }
+        .joystick-base::before {
+            content: ''; position: absolute; inset: 18px; border-radius: 50%;
+            border: 1px dashed rgba(148,163,184,0.35);
+        }
+        .joystick-stick {
+            position: absolute; left: 50%; top: 50%; width: 34px; height: 34px;
+            border-radius: 50%; background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+            border: 2px solid #e0f2fe; box-shadow: 0 0 12px rgba(56,189,248,0.35);
+            transform: translate(-50%, -50%);
+            transition: transform 0.08s linear;
+        }
+        .joystick-base .center {
+            position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; border-radius: 50%;
+            background: #f8fafc; transform: translate(-50%, -50%);
+            opacity: 0.8;
+        }
         @media (max-width: 850px) { .dashboard { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -212,9 +238,11 @@ DASHBOARD_HTML = """
             <div class="card"><span class="label">Temperature</span><span class="value"><span id="temperature">--</span><span class="unit">&deg;C</span></span></div>
 
             <div class="section-title">Left Joystick</div>
-            <div class="grid-2">
-                <div class="card"><span class="label">X</span><span class="value" id="left_joy_x">--</span></div>
-                <div class="card"><span class="label">Y</span><span class="value" id="left_joy_y">--</span></div>
+            <div class="joystick-widget">
+                <div class="joystick-base" id="left_joy_widget">
+                    <div class="center"></div>
+                    <div class="joystick-stick" id="left_joy_stick"></div>
+                </div>
             </div>
         </div>
 
@@ -251,9 +279,11 @@ DASHBOARD_HTML = """
             <div class="card"><span class="label">Yaw</span><span class="value" id="yaw">N/A</span></div>
 
             <div class="section-title">Right Joystick</div>
-            <div class="grid-2">
-                <div class="card"><span class="label">X</span><span class="value" id="right_joy_x">--</span></div>
-                <div class="card"><span class="label">Y</span><span class="value" id="right_joy_y">--</span></div>
+            <div class="joystick-widget">
+                <div class="joystick-base" id="right_joy_widget">
+                    <div class="center"></div>
+                    <div class="joystick-stick" id="right_joy_stick"></div>
+                </div>
             </div>
         </div>
 
@@ -263,6 +293,16 @@ DASHBOARD_HTML = """
         function fmt(v, digits) {
             if (v === null || v === undefined) return "--";
             return Number(v).toFixed(digits);
+        }
+        function clamp(v, min, max) {
+            return Math.min(max, Math.max(min, v));
+        }
+        function updateJoystickVisual(stickEl, x, y) {
+            const rawX = x === null || x === undefined ? 127 : Number(x);
+            const rawY = y === null || y === undefined ? 127 : Number(y);
+            const offsetX = clamp(((rawX - 127) / 127) * 50, -50, 50);
+            const offsetY = clamp(((rawY - 127) / 127) * 50, -50, 50);
+            stickEl.style.transform = `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px))`;
         }
         async function refresh() {
             try {
@@ -274,10 +314,8 @@ DASHBOARD_HTML = """
                 }
                 document.getElementById('humidity').textContent = fmt(d.humidity_pct, 1);
                 document.getElementById('temperature').textContent = fmt(d.temperature_c, 1);
-                document.getElementById('left_joy_x').textContent = fmt(d.left_joystick_x, 0);
-                document.getElementById('left_joy_y').textContent = fmt(d.left_joystick_y, 0);
-                document.getElementById('right_joy_x').textContent = fmt(d.right_joystick_x, 0);
-                document.getElementById('right_joy_y').textContent = fmt(d.right_joystick_y, 0);
+                updateJoystickVisual(document.getElementById('left_joy_stick'), d.left_joystick_x, d.left_joystick_y);
+                updateJoystickVisual(document.getElementById('right_joy_stick'), d.right_joystick_x, d.right_joystick_y);
                 document.getElementById('mode').textContent = d.mode ?? '--';
                 document.getElementById('mode_status').textContent = d.mode_status ?? '--';
 
