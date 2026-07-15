@@ -182,10 +182,10 @@ DASHBOARD_HTML = """
         <div class="panel">
             <h2>Motors & Environment</h2>
             <div class="section-title">Motor Currents</div>
-            <div class="card"><span class="label">Motor 1</span><span class="value"><span id="m0">--</span><span class="unit">A</span></span></div>
-            <div class="card"><span class="label">Motor 2</span><span class="value"><span id="m1">--</span><span class="unit">A</span></span></div>
-            <div class="card"><span class="label">Motor 3</span><span class="value"><span id="m2">--</span><span class="unit">A</span></span></div>
-            <div class="card"><span class="label">Motor 4</span><span class="value"><span id="m3">--</span><span class="unit">A</span></span></div>
+            <div class="card"><span class="label">Left Propeller</span><span class="value"><span id="m0">--</span><span class="unit">A</span></span></div>
+            <div class="card"><span class="label">Right Propeller</span><span class="value"><span id="m1">--</span><span class="unit">A</span></span></div>
+            <div class="card"><span class="label">Left Brush</span><span class="value"><span id="m2">--</span><span class="unit">A</span></span></div>
+            <div class="card"><span class="label">Right Brush</span><span class="value"><span id="m3">--</span><span class="unit">A</span></span></div>
 
             <div class="section-title">Environment</div>
             <div class="card"><span class="label">Humidity</span><span class="value"><span id="humidity">--</span><span class="unit">%</span></span></div>

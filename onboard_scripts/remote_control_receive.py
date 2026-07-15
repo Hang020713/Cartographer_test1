@@ -8,7 +8,7 @@ import camera_utils
 import sensor_utils
 import rclpy
 
-HAVE_PIXHAWK = False
+HAVE_PIXHAWK = True
 
 # Functions Parameters
 INPUT_PORT=None  # Serial port to be selected by the user
@@ -265,25 +265,26 @@ def update_manual_control(steering_left, throttle_left, steering_right, throttle
 
 # Main Function
 if __name__ == "__main__":
-    # Select baud rate, default to 4800 if not provided
-    try:
-        INPUT_BAUDRATE = int(input("Enter baud rate (default 4800): ") or 4800)
-    except ValueError:
-        print("Invalid baud rate. Using default 4800.")
-        INPUT_BAUDRATE = 4800
+    # # Select baud rate, default to 4800 if not provided
+    # try:
+    #     INPUT_BAUDRATE = int(input("Enter baud rate (default 4800): ") or 4800)
+    # except ValueError:
+    #     print("Invalid baud rate. Using default 4800.")
+    #     INPUT_BAUDRATE = 4800
 
-    # Select the serial port
-    INPUT_PORT = rc_utils.select_serial_port(INPUT_PORT)
-    print(f"Selected port: {INPUT_PORT}")
+    # # Select the serial port
+    # INPUT_PORT = rc_utils.select_serial_port(INPUT_PORT)
+    # print(f"Selected port: {INPUT_PORT}")
 
-    if INPUT_PORT is None:
-        print("No port selected. Exiting.")
-        raise SystemExit(1)
+    # if INPUT_PORT is None:
+    #     print("No port selected. Exiting.")
+    #     raise SystemExit(1)
 
-    # Init serial connection
-    ser = rc_utils.init_serial_connection(INPUT_PORT, INPUT_BAUDRATE)
-    if ser is None:
-        raise SystemExit(1)
+    # # Init serial connection
+    # ser = rc_utils.init_serial_connection(INPUT_PORT, INPUT_BAUDRATE)
+    # if ser is None:
+    #     raise SystemExit(1)
+    ser = rc_utils.init_serial_connection('/dev/ttyAMA1', 4800)
     
     # Configure the device
     response = rc_utils.send_config_command(ser, end_char=END_CHAR)

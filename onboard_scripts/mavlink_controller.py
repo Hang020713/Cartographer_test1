@@ -35,12 +35,13 @@ class ListLogHandler(logging.Handler):
 
 
 class MavController:
-    def __init__(self, port: str = SERIAL_PORT, baud: int = SERIAL_BAUD):
+    def __init__(self, port: str = SERIAL_PORT, baud: int = SERIAL_BAUD, imu_enabled: bool = False):
         if getattr(self, "initialized", False):
             return
 
         self.port = port
         self.baud = baud
+        self.imu_enabled = imu_enabled
         self.master: Optional[mavutil.mavlink_connection] = None
         self.log_history = deque(maxlen=LOG_MAX_LEN)
         self.logger = self._setup_logger()
@@ -70,10 +71,24 @@ class MavController:
         self._motor_lock = threading.Lock()
         self._motor_refresh_thread = None
 
+        self._imu_data = {
+            "acc_x": 0.0,
+            "acc_y": 0.0,
+            "acc_z": 0.0,
+            "gyro_x": 0.0,
+            "gyro_y": 0.0,
+            "gyro_z": 0.0,
+        }
+        self._imu_lock = threading.Lock()
+        self._imu_thread = None
+
         self._connect_and_initialize()
 
         threading.Thread(target=self._send_loop, daemon=True).start()
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+        if self.imu_enabled:
+            self._imu_thread = threading.Thread(target=self._imu_loop, daemon=True)
+            self._imu_thread.start()
 
         self.initialized = True
         print("MavController initialized successfully.")
@@ -317,6 +332,46 @@ class MavController:
                             break
     
 
+    def _update_imu_data(self, msg) -> None:
+        if not msg:
+            return
+
+        with self._imu_lock:
+            self._imu_data = {
+                "acc_x": getattr(msg, "xacc", 0.0),
+                "acc_y": getattr(msg, "yacc", 0.0),
+                "acc_z": getattr(msg, "zacc", 0.0),
+                "gyro_x": getattr(msg, "xgyro", 0.0),
+                "gyro_y": getattr(msg, "ygyro", 0.0),
+                "gyro_z": getattr(msg, "zgyro", 0.0),
+            }
+
+    def get_imu_data(self) -> dict:
+        with self._imu_lock:
+            return dict(self._imu_data)
+
+    def _imu_loop(self):
+        while self.running:
+            if not self.is_connected:
+                time.sleep(0.1)
+                continue
+
+            try:
+                msg = self.master.recv_match(
+                    type="SCALED_IMU2",
+                    blocking=True,
+                    timeout=2.0,
+                )
+            except Exception as exc:
+                self.logger.error(f"IMU receive failed: {exc}")
+                time.sleep(1)
+                continue
+
+            if not msg:
+                continue
+
+            self._update_imu_data(msg)
+
     def get_status(self) -> dict:
         heartbeat_age = time.time() - self.last_heartbeat
         left_brush, right_brush = self._compute_brush_pwm()
@@ -334,6 +389,7 @@ class MavController:
             "brush_speed_pct": self.brush_speed_pct,
             "brush_left_pwm": left_brush,
             "brush_right_pwm": right_brush,
+            "imu_data": self.get_imu_data(),
         }
 
     def get_logs(self) -> list:

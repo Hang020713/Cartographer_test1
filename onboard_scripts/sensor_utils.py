@@ -8,10 +8,10 @@ from sensor_msgs.msg import Temperature
 
 # INA4230 current/power monitor channels (publish Float64)
 INA4230_TOPIC = [
-    "/ina4230_0x44/channel_1/raw",
-    "/ina4230_0x44/channel_2/raw",
-    "/ina4230_0x44/channel_3/raw",
-    "/ina4230_0x44/channel_4/raw",
+    "/ina4230_0x40/channel_4/raw",
+    "/ina4230_0x41/channel_3/raw",
+    "/ina4230_0x40/channel_2/raw",
+    "/ina4230_0x41/channel_1/raw",
 ]
 
 # SHT3X temperature/humidity sensor
