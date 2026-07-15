@@ -73,6 +73,9 @@ latest_status = {
     "left_joystick_y": None,
     "right_joystick_x": None,
     "right_joystick_y": None,
+    "brush_direction": None,
+    "brush_speed": None,
+    "light_pct": None,
 }
 
 
@@ -101,6 +104,9 @@ def update_latest_joystick_status():
         left_y = mapped_left_y
         right_x = mapped_right_x
         right_y = mapped_right_y
+        brush_direction = mapped_brush_dir
+        brush_speed = mapped_brush_speed
+        light_pct = mapped_light_pct
 
     with status_lock:
         latest_status["timestamp"] = time.time()
@@ -108,6 +114,9 @@ def update_latest_joystick_status():
         latest_status["left_joystick_y"] = left_y
         latest_status["right_joystick_x"] = right_x
         latest_status["right_joystick_y"] = right_y
+        latest_status["brush_direction"] = brush_direction
+        latest_status["brush_speed"] = brush_speed
+        latest_status["light_pct"] = light_pct
 
 
 # ---------------------------------------------------------------------------
@@ -260,23 +269,11 @@ DASHBOARD_HTML = """
 
         <!-- RIGHT COLUMN -->
         <div class="panel">
-            <h2>IMU Data</h2>
-            <div class="section-title">Accelerometer (m/s&sup2;)</div>
-            <div class="grid-2">
-                <div class="card"><span class="label">X</span><span class="value" id="ax">N/A</span></div>
-                <div class="card"><span class="label">Y</span><span class="value" id="ay">N/A</span></div>
-                <div class="card"><span class="label">Z</span><span class="value" id="az">N/A</span></div>
-            </div>
-            <div class="section-title">Gyroscope (rad/s)</div>
-            <div class="grid-2">
-                <div class="card"><span class="label">X</span><span class="value" id="gx">N/A</span></div>
-                <div class="card"><span class="label">Y</span><span class="value" id="gy">N/A</span></div>
-                <div class="card"><span class="label">Z</span><span class="value" id="gz">N/A</span></div>
-            </div>
-            <div class="section-title">Orientation (&deg;)</div>
-            <div class="card"><span class="label">Roll</span><span class="value" id="roll">N/A</span></div>
-            <div class="card"><span class="label">Pitch</span><span class="value" id="pitch">N/A</span></div>
-            <div class="card"><span class="label">Yaw</span><span class="value" id="yaw">N/A</span></div>
+            <h2>Brush & Light</h2>
+            <div class="section-title">Right Controls</div>
+            <div class="card"><span class="label">Brush Direction</span><span class="value"><span id="brush_direction">--</span></span></div>
+            <div class="card"><span class="label">Brush Speed</span><span class="value"><span id="brush_speed">--</span><span class="unit">%</span></span></div>
+            <div class="card"><span class="label">Light</span><span class="value"><span id="light_pct">--</span><span class="unit">%</span></span></div>
 
             <div class="section-title">Right Joystick</div>
             <div class="joystick-widget">
@@ -293,6 +290,11 @@ DASHBOARD_HTML = """
         function fmt(v, digits) {
             if (v === null || v === undefined) return "--";
             return Number(v).toFixed(digits);
+        }
+        function fmtBrushDirection(v) {
+            if (v === null || v === undefined) return "--";
+            if (Number(v) === 0) return "Idle";
+            return Number(v) > 0 ? "Up" : "Down";
         }
         function clamp(v, min, max) {
             return Math.min(max, Math.max(min, v));
@@ -318,6 +320,9 @@ DASHBOARD_HTML = """
                 updateJoystickVisual(document.getElementById('right_joy_stick'), d.right_joystick_x, d.right_joystick_y);
                 document.getElementById('mode').textContent = d.mode ?? '--';
                 document.getElementById('mode_status').textContent = d.mode_status ?? '--';
+                document.getElementById('brush_direction').textContent = fmtBrushDirection(d.brush_direction);
+                document.getElementById('brush_speed').textContent = fmt(d.brush_speed, 0);
+                document.getElementById('light_pct').textContent = fmt(d.light_pct, 0);
 
                 const dot = document.getElementById('live-dot');
                 const lbl = document.getElementById('last-update');
