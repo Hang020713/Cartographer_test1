@@ -8,35 +8,37 @@ INQUERY_PAYLOAD_LEN = 7
 STATUS_PAYLOAD_LEN = 4
 
 class COMMANDS(IntEnum):
+    ERROR = -1
     REQUEST_STATUS = 0
     REQUEST_MAP = 1
     SET_MODE = 2
     MANUAL_CONTROL = 3
 
-def get_command_type(command_type: byte):
+def get_command_type(command_type):
     try:
         return COMMANDS(int.from_bytes(command_type, byteorder='big'))
     except ValueError:
-        return "N/A"
+        return COMMANDS.ERROR
 
 class MODES(IntEnum):
+    ERROR = -1
     IDLE = 1
     PRE_WASH = 2
     AUTO = 3
     MANUAL = 4
 
-def get_mode(mode: byte):
+def get_mode(mode):
     try:
         return MODES(int.from_bytes(mode, byteorder='big'))
     except ValueError:
-        return "N/A"
+        return MODES.ERROR
 
 class MODE_STATUS(IntEnum):
     SUCCESS = 0
     FAIL = 1
     ONGOING = 2
 
-def get_mode_status(mode_status: byte):
+def get_mode_status(mode_status):
     try:
         return MODE_STATUS(int.from_bytes(mode_status, byteorder='big'))
     except ValueError:
@@ -150,14 +152,24 @@ def send_config_command(ser, command=None, wait_time=1, end_char='\n'):
     # Hardcoded first
     # AT+rf_config=16,0,4,12,0,0,4
     config_command = "AT+rf_config=16,1,4,7,0,0,4"
+    entm_command = "AT+ENTM"
     
     try:
-        print(f"Sending command: {command}")
+        print(f"Sending command: {config_command}")
         ser.write((config_command + end_char).encode())
         time.sleep(wait_time)
-
         response = ser.read(ser.in_waiting)
-        return response.decode('utf-8', errors='ignore')
+        print(response)
+
+        # print(f"Sending command: {entm_command}")
+        # ser.write((entm_command + end_char).encode())
+        # time.sleep(wait_time)
+        # response = ser.read(ser.in_waiting)
+        # print(response)
+        
+        # return response.decode('utf-8', errors='ignore')
+        # TODO: fix this
+        return "OK"
     except Exception as e:
         return f"Error: {e}"
 
@@ -210,15 +222,24 @@ def send_bytes(ser, byte_data, wait_time=1, end_char='\n', read_response=True, d
     LEN = len(byte_data)
 
     try:
-        rf_send_command = f"AT+rf_send={CNTS},{INTERVAL},{LEN}"
+        # rf_send_command = f"AT+rf_send={CNTS},{INTERVAL},{LEN}"
         
-        if debug:
-            print(f"Sending command: {rf_send_command}")
+        # if debug:
+        #     print(f"Sending command: {rf_send_command}")
 
-        ser.write((rf_send_command + end_char).encode())
-        time.sleep(0.1)
-
+        # print(f"[{time.time()}]: Start writing AT_SEND:1,0,4")
+        # ser.write((rf_send_command + end_char).encode())
+        # print(f"[{time.time()}]: Start sleep")
+        # time.sleep(0.05)    # 10 ms
+        # print(f"[{time.time()}]: Done sleep")
+        
+        # print(f"[{time.time()}]: Start writing data")
         ser.write(byte_data)
+        # print(f"[{time.time()}]: done writing data")
+        # print(f"[{time.time()}]: Start sleep")
+        time.sleep(0.02)    # 20ms
+        # print(f"[{time.time()}]: done sleeping")
+
 
         if read_response:
             response = ser.read(ser.in_waiting)
