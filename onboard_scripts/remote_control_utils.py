@@ -5,7 +5,8 @@ import serial.tools.list_ports
 from enum import IntEnum
 
 INQUERY_PAYLOAD_LEN = 10
-STATUS_PAYLOAD_LEN = 4
+STATUS_PAYLOAD_LEN = 16
+# STATUS_PAYLOAD_LEN = 4 
 
 class COMMANDS(IntEnum):
     ERROR = -1

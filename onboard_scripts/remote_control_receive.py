@@ -136,8 +136,8 @@ def command_handler_thread_func():
             continue
         
         print(f"[{time.time()}][Command Handler] Parse next command: {next_command}")
-        id = received_data[0:1]
-        command_type = rc_utils.get_command_type(received_data[1:2])
+        id = next_command[0:1]
+        command_type = rc_utils.get_command_type(next_command[1:2])
         
         # Parse command type
         match command_type:
@@ -151,25 +151,40 @@ def command_handler_thread_func():
                 # print(readings["temperature"])
                 print(f"[{time.time()}]Sensors: INA4230={sensor_readings['ina4230']} Humidity={sensor_readings['humidity']} Temperature={sensor_readings['temperature']}")
 
-                # Send the status
-                byte_data = bytes([
-                    MESSAGE_ID, ID, 
-                    current_mode, current_mode_status
-                ])
+                sensor_bytes = []
+                for value in sensor_readings["ina4230"].values():
+                    sensor_raw = int(round(value or 0))
+                    sensor_bytes.extend([(sensor_raw >> 8) & 0xFF, sensor_raw & 0xFF])
+
+                humidity_raw = int(round(sensor_readings["humidity"] or 0))
+                temperature_raw = int(round(sensor_readings["temperature"] or 0))
+                humidity_bytes = [(humidity_raw >> 8) & 0xFF, humidity_raw & 0xFF]
+                temperature_bytes = [(temperature_raw >> 8) & 0xFF, temperature_raw & 0xFF]
+
+                payload = [
+                    MESSAGE_ID,
+                    ID,
+                    int(current_mode),
+                    int(current_mode_status),
+                    *sensor_bytes,
+                    *humidity_bytes,
+                    *temperature_bytes,
+                ]
+                byte_data = bytes(payload)
                 response = rc_utils.send_bytes(ser, byte_data, read_response=False)
                 
             case rc_utils.COMMANDS.MANUAL_CONTROL:
                 print("Got manual control")
 
                 # Parse the reading
-                steering_left = received_data[2:3]  # LX
-                throttle_left = received_data[3:4]  # LY
-                steering_right = received_data[4:5] # RX
-                throttle_right = received_data[5:6] # RY
+                steering_left = next_command[2:3]  # LX
+                throttle_left = next_command[3:4]  # LY
+                steering_right = next_command[4:5] # RX
+                throttle_right = next_command[5:6] # RY
 
-                brush_dir = received_data[6:7]
-                brush_speed = received_data[7:8]
-                light_pct = received_data[8:9]
+                brush_dir = next_command[6:7]
+                brush_speed = next_command[7:8]
+                light_pct = next_command[8:9]
 
                 print(f"[{time.time()}]Steering Left: {steering_left.hex()}\nThrottle Left: {throttle_left.hex()}\nSteering Right: {steering_right.hex()}\nThrottle Right: {throttle_right.hex()}\n-EOF")
                 print(f"[{time.time()}]Brush Dir: {brush_dir}, {brush_speed}")

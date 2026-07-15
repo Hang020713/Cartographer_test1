@@ -44,6 +44,50 @@ read_joystick_thread = None
 receive_lora_thread = None
 
 # Lora received parameters
+CURRENT_LSB = 0.001
+kTempOffset = -45.0
+kTempScale = 175.0
+kHumScale = 100.0
+kRawMax = 65535.0
+
+def parse_status_payload(raw_payload):
+    if raw_payload is None:
+        return None
+
+    payload = bytes(raw_payload)
+    print(f"[status] raw bytes: {payload.hex()}")
+
+    if len(payload) < 3:
+        print("[status] payload is too short to parse")
+        return None
+
+    parsed = {
+        "id": payload[0],
+        "mode": rc_utils.get_mode(payload[1:2]),
+        "mode_status": rc_utils.get_mode_status(payload[2:3]),
+    }
+
+    sensor_channels = []
+    for channel_index in range(4):
+        start = 3 + channel_index * 2
+        end = start + 2
+        if end <= len(payload):
+            sensor_channels.append(int.from_bytes(payload[start:end], byteorder="big") * CURRENT_LSB)
+        else:
+            sensor_channels.append(None)
+
+    parsed["sensor_channels"] = sensor_channels
+
+    if len(payload) >= 15:
+        humidity_raw = int.from_bytes(payload[11:13], byteorder="big")
+        temperature_raw = int.from_bytes(payload[13:15], byteorder="big")
+        parsed["humidity_raw"] = humidity_raw
+        parsed["temperature_raw"] = temperature_raw
+        parsed["humidity_pct"] = kHumScale * (humidity_raw / kRawMax)
+        parsed["temperature_c"] = kTempOffset + kTempScale * (temperature_raw / kRawMax)
+
+    return parsed
+
 
 def read_joystick_thread_func():
     while not program_stop_event.is_set():
@@ -60,12 +104,19 @@ def receive_lora_response():
     received_data = rc_utils.read_frame(send_ser, MESSAGE_ID, rc_utils.STATUS_PAYLOAD_LEN)
     if received_data is None:
         return
-    print(received_data)
 
-    mode = received_data[1:2]
-    mode_status = received_data[2:3]
-    print(f"[{time.time()}] mode: {rc_utils.get_mode(mode).name}")
-    print(f"[{time.time()}] mode_status: {rc_utils.get_mode_status(mode_status).name}")
+    parsed_status = parse_status_payload(received_data)
+    if parsed_status is None:
+        return
+
+    mode_name = parsed_status["mode"].name if hasattr(parsed_status["mode"], "name") else parsed_status["mode"]
+    mode_status_name = parsed_status["mode_status"].name if hasattr(parsed_status["mode_status"], "name") else parsed_status["mode_status"]
+
+    print(f"[{time.time()}] mode: {mode_name}")
+    print(f"[{time.time()}] mode_status: {mode_status_name}")
+    print(f"[{time.time()}] sensor channels: {parsed_status['sensor_channels']}")
+    print(f"[{time.time()}] humidity: {parsed_status['humidity_raw']} (raw) -> {parsed_status['humidity_pct']} %")
+    print(f"[{time.time()}] temperature: {parsed_status['temperature_raw']} (raw) -> {parsed_status['temperature_c']} °C")
 
 # Joystick functions
 def map_joystick_value(x):

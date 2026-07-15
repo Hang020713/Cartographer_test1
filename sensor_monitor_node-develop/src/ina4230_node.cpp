@@ -61,6 +61,25 @@ private:
     static constexpr uint16_t kConfigInit = 0xF427;
 
     // ── Initialization steps ───────────────────────────────────────────
+    static bool parse_i2c_address(const std::string &token, uint8_t &addr)
+    {
+        try
+        {
+            size_t idx = 0;
+            int value = std::stoi(token, &idx, 0);
+            if (idx != token.size() || value < 0 || value > 0x7F)
+            {
+                return false;
+            }
+            addr = static_cast<uint8_t>(value);
+            return true;
+        }
+        catch (const std::exception &)
+        {
+            return false;
+        }
+    }
+
     void load_parameters()
     {
         this->declare_parameter<std::string>("i2c_device", "/dev/i2c-3");
@@ -72,10 +91,58 @@ private:
         current_lsb_ = this->get_parameter("current_lsb").as_double();
         r_shunt_ = this->get_parameter("shunt_resistance").as_double();
 
-        for (auto addr : this->get_parameter("i2c_addresses").as_integer_array())
+        i2c_addrs_.clear();
+        rclcpp::Parameter i2c_addresses_param;
+        if (!this->get_parameter("i2c_addresses", i2c_addresses_param))
         {
-            i2c_addrs_.push_back(static_cast<uint8_t>(addr));
+            RCLCPP_ERROR(this->get_logger(), "Failed to load 'i2c_addresses' parameter");
+            throw std::runtime_error("Missing i2c_addresses parameter");
         }
+
+        if (i2c_addresses_param.get_type() == rclcpp::ParameterType::PARAMETER_INTEGER_ARRAY)
+        {
+            auto int_addrs = i2c_addresses_param.as_integer_array();
+            for (auto addr : int_addrs)
+            {
+                if (addr < 0 || addr > 0x7F)
+                {
+                    RCLCPP_WARN(this->get_logger(), "Skipping out-of-range I2C address %d", addr);
+                    continue;
+                }
+                i2c_addrs_.push_back(static_cast<uint8_t>(addr));
+            }
+        }
+        else if (i2c_addresses_param.get_type() == rclcpp::ParameterType::PARAMETER_STRING_ARRAY)
+        {
+            for (auto &addr_str : i2c_addresses_param.as_string_array())
+            {
+                uint8_t addr = 0;
+                if (!parse_i2c_address(addr_str, addr))
+                {
+                    RCLCPP_WARN(this->get_logger(), "Skipping invalid I2C address string '%s'", addr_str.c_str());
+                    continue;
+                }
+                i2c_addrs_.push_back(addr);
+            }
+        }
+        else
+        {
+            RCLCPP_WARN(this->get_logger(), "Unsupported type for 'i2c_addresses'; expected integer array or string array");
+        }
+
+        if (i2c_addrs_.empty())
+        {
+            RCLCPP_ERROR(this->get_logger(), "Parameter 'i2c_addresses' is empty or invalid");
+            throw std::runtime_error("Invalid i2c_addresses parameter");
+        }
+
+        std::ostringstream addr_list;
+        addr_list << "Configured I2C addresses:";
+        for (auto addr : i2c_addrs_)
+        {
+            addr_list << " 0x" << to_hex_string(addr);
+        }
+        RCLCPP_INFO(this->get_logger(), "%s", addr_list.str().c_str());
     }
 
     void open_i2c_bus()
