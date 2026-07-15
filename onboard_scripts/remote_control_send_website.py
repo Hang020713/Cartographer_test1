@@ -294,7 +294,8 @@ DASHBOARD_HTML = """
         function fmtBrushDirection(v) {
             if (v === null || v === undefined) return "--";
             if (Number(v) === 0) return "Idle";
-            return Number(v) > 0 ? "Up" : "Down";
+            else if(Number(v) === 1) return "CW";
+            else if(Number(v) === 2) return "CCW";
         }
         function clamp(v, min, max) {
             return Math.min(max, Math.max(min, v));
@@ -343,7 +344,7 @@ DASHBOARD_HTML = """
                 document.getElementById('last-update').textContent = 'Connection error';
             }
         }
-        setInterval(refresh, 500);
+        setInterval(refresh, 50);
         refresh();
     </script>
 </body>
