@@ -69,6 +69,10 @@ latest_status = {
     "temperature_c": None,
     "humidity_raw": None,
     "temperature_raw": None,
+    "left_joystick_x": None,
+    "left_joystick_y": None,
+    "right_joystick_x": None,
+    "right_joystick_y": None,
 }
 
 
@@ -88,6 +92,22 @@ def update_latest_status(parsed):
         latest_status["temperature_c"] = parsed.get("temperature_c")
         latest_status["humidity_raw"] = parsed.get("humidity_raw")
         latest_status["temperature_raw"] = parsed.get("temperature_raw")
+
+
+def update_latest_joystick_status():
+    """Copy the latest joystick values into the shared dashboard store."""
+    with joystick_lock:
+        left_x = mapped_left_x
+        left_y = mapped_left_y
+        right_x = mapped_right_x
+        right_y = mapped_right_y
+
+    with status_lock:
+        latest_status["timestamp"] = time.time()
+        latest_status["left_joystick_x"] = left_x
+        latest_status["left_joystick_y"] = left_y
+        latest_status["right_joystick_x"] = right_x
+        latest_status["right_joystick_y"] = right_y
 
 
 # ---------------------------------------------------------------------------
@@ -182,14 +202,20 @@ DASHBOARD_HTML = """
         <div class="panel">
             <h2>Motors & Environment</h2>
             <div class="section-title">Motor Currents</div>
-            <div class="card"><span class="label">Left Propeller</span><span class="value"><span id="m0">--</span><span class="unit">A</span></span></div>
-            <div class="card"><span class="label">Right Propeller</span><span class="value"><span id="m1">--</span><span class="unit">A</span></span></div>
-            <div class="card"><span class="label">Left Brush</span><span class="value"><span id="m2">--</span><span class="unit">A</span></span></div>
-            <div class="card"><span class="label">Right Brush</span><span class="value"><span id="m3">--</span><span class="unit">A</span></span></div>
+            <div class="card"><span class="label">Left Brush</span><span class="value"><span id="m0">--</span><span class="unit">A</span></span></div>
+            <div class="card"><span class="label">Left Propeller</span><span class="value"><span id="m1">--</span><span class="unit">A</span></span></div>
+            <div class="card"><span class="label">Right Brush</span><span class="value"><span id="m2">--</span><span class="unit">A</span></span></div>
+            <div class="card"><span class="label">Right Propeller</span><span class="value"><span id="m3">--</span><span class="unit">A</span></span></div>
 
             <div class="section-title">Environment</div>
             <div class="card"><span class="label">Humidity</span><span class="value"><span id="humidity">--</span><span class="unit">%</span></span></div>
             <div class="card"><span class="label">Temperature</span><span class="value"><span id="temperature">--</span><span class="unit">&deg;C</span></span></div>
+
+            <div class="section-title">Left Joystick</div>
+            <div class="grid-2">
+                <div class="card"><span class="label">X</span><span class="value" id="left_joy_x">--</span></div>
+                <div class="card"><span class="label">Y</span><span class="value" id="left_joy_y">--</span></div>
+            </div>
         </div>
 
         <!-- CENTER COLUMN -->
@@ -223,6 +249,12 @@ DASHBOARD_HTML = """
             <div class="card"><span class="label">Roll</span><span class="value" id="roll">N/A</span></div>
             <div class="card"><span class="label">Pitch</span><span class="value" id="pitch">N/A</span></div>
             <div class="card"><span class="label">Yaw</span><span class="value" id="yaw">N/A</span></div>
+
+            <div class="section-title">Right Joystick</div>
+            <div class="grid-2">
+                <div class="card"><span class="label">X</span><span class="value" id="right_joy_x">--</span></div>
+                <div class="card"><span class="label">Y</span><span class="value" id="right_joy_y">--</span></div>
+            </div>
         </div>
 
     </div>
@@ -242,6 +274,10 @@ DASHBOARD_HTML = """
                 }
                 document.getElementById('humidity').textContent = fmt(d.humidity_pct, 1);
                 document.getElementById('temperature').textContent = fmt(d.temperature_c, 1);
+                document.getElementById('left_joy_x').textContent = fmt(d.left_joystick_x, 0);
+                document.getElementById('left_joy_y').textContent = fmt(d.left_joystick_y, 0);
+                document.getElementById('right_joy_x').textContent = fmt(d.right_joystick_x, 0);
+                document.getElementById('right_joy_y').textContent = fmt(d.right_joystick_y, 0);
                 document.getElementById('mode').textContent = d.mode ?? '--';
                 document.getElementById('mode_status').textContent = d.mode_status ?? '--';
 
@@ -414,6 +450,8 @@ def read_joystick():
             mapped_brush_dir = brush_dir - 128
             mapped_brush_speed = 100 if brush_speed > 100 else brush_speed
             mapped_light_pct = 100 if light_pct > 100 else light_pct
+
+        update_latest_joystick_status()
 
         if DEBUG_JOYSTICK:
             print(f"[{time.time()}]LX: {left_joystick_x}, LY: {left_joystick_y}, RX: {right_joystick_x}, RY: {right_joystick_y}")
