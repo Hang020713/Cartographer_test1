@@ -5,6 +5,8 @@ import threading
 import queue
 import light_utils
 import camera_utils
+import sensor_utils
+import rclpy
 
 HAVE_PIXHAWK = False
 
@@ -45,7 +47,7 @@ PWM_PIN_MAP = {
 }
 UVC_LIGHT_PIN = "19"
 UVC_LIGHT_FREQ = 2000
-UVC_LIGHT_LAST_DUTY = 0
+UVC_LIGHT_LAST_DUTY = -1
 
 # Camera
 camera_recorder = None
@@ -64,6 +66,43 @@ command_queue = queue.Queue()
 # Threads
 program_stop_event = threading.Event()
 command_handler_thread = None
+sensor_subscriber = None
+sensor_spin_thread = None
+
+
+def start_sensor_subscriber():
+    global sensor_subscriber, sensor_spin_thread
+
+    if sensor_subscriber is None:
+        if not rclpy.ok():
+            rclpy.init(args=None)
+
+        sensor_subscriber = sensor_utils.SensorSubscriber()
+        sensor_spin_thread = threading.Thread(
+            target=lambda: rclpy.spin(sensor_subscriber),
+            daemon=True,
+            name="sensor_subscriber"
+        )
+        sensor_spin_thread.start()
+        print("Sensor subscriber started")
+
+    return sensor_subscriber
+
+
+def get_latest_sensor_readings():
+    if sensor_subscriber is None:
+        return {
+            "ina4230": {},
+            "humidity": None,
+            "temperature": None,
+        }
+
+    return {
+        "ina4230": dict(sensor_subscriber.latest_ina4230_values),
+        "humidity": sensor_subscriber.latest_humidity,
+        "temperature": sensor_subscriber.latest_temperature,
+    }
+
 
 def map_brush_pwm(brush_dir, brush_speed, side):
     brush_dir_raw = int.from_bytes(brush_dir, byteorder='little')
@@ -105,8 +144,18 @@ def command_handler_thread_func():
             case rc_utils.COMMANDS.REQUEST_STATUS:
                 print("Got request status")
 
+                # Sensor readings (latest raw values from the ROS2 subscriber)
+                sensor_readings = get_latest_sensor_readings()
+                # print(readings["ina4230"])
+                # print(readings["humidity"])
+                # print(readings["temperature"])
+                print(f"[{time.time()}]Sensors: INA4230={sensor_readings['ina4230']} Humidity={sensor_readings['humidity']} Temperature={sensor_readings['temperature']}")
+
                 # Send the status
-                byte_data = bytes([MESSAGE_ID, ID, current_mode, current_mode_status])
+                byte_data = bytes([
+                    MESSAGE_ID, ID, 
+                    current_mode, current_mode_status
+                ])
                 response = rc_utils.send_bytes(ser, byte_data, read_response=False)
                 
             case rc_utils.COMMANDS.MANUAL_CONTROL:
@@ -141,13 +190,7 @@ def update_manual_control(steering_left, throttle_left, steering_right, throttle
     throttle_left_pwm = rc_utils.percent_to_pwm(throttle_left_pct, THROTTLE_PWM_MIN, THROTTLE_PWM_MAX, THROTTLE_PWM_CENTER)
     throttle_right_pwm = rc_utils.percent_to_pwm(throttle_right_pct, THROTTLE_PWM_MIN, THROTTLE_PWM_MAX, THROTTLE_PWM_CENTER)
 
-    # Calculate PWM values based on the received data
-    throttle_raw_left = int.from_bytes(throttle_left, byteorder='little')
-    throttle_raw_right = int.from_bytes(throttle_right, byteorder='little')
-    throttle_left_pct = rc_utils.raw_to_percent(throttle_raw_left, THROTTLE_RAW_MIN, THROTTLE_RAW_MAX, THROTTLE_RAW_CENTER)
-    throttle_right_pct = rc_utils.raw_to_percent(throttle_raw_right, THROTTLE_RAW_MIN, THROTTLE_RAW_MAX, THROTTLE_RAW_CENTER)
-    throttle_left_pwm = rc_utils.percent_to_pwm(throttle_left_pct, THROTTLE_PWM_MIN, THROTTLE_PWM_MAX, THROTTLE_PWM_CENTER)
-    throttle_right_pwm = rc_utils.percent_to_pwm(throttle_right_pct, THROTTLE_PWM_MIN, THROTTLE_PWM_MAX, THROTTLE_PWM_CENTER)
+    throttle_avg_pct = (throttle_left_pct + throttle_right_pct) / 2.0
 
     print(f"throttle_left_pct={throttle_left_pct} throttle_right_pct={throttle_right_pct}")
     print(f"throttle_left_pwm={throttle_left_pwm} throttle_right_pwm={throttle_right_pwm}")
@@ -157,6 +200,11 @@ def update_manual_control(steering_left, throttle_left, steering_right, throttle
     steering_raw_right = int.from_bytes(steering_right, byteorder='little')
     steering_left_pct = rc_utils.raw_to_percent(steering_raw_left, STEERING_RAW_MIN, STEERING_RAW_MAX, STEERING_RAW_CENTER)
     steering_right_pct = rc_utils.raw_to_percent(steering_raw_right, STEERING_RAW_MIN, STEERING_RAW_MAX, STEERING_RAW_CENTER)
+
+    if throttle_avg_pct < 0:
+        steering_left_pct = -steering_left_pct
+        steering_right_pct = -steering_right_pct
+
     steering_left_pwm = rc_utils.percent_to_pwm(steering_left_pct, STEERING_PWM_MIN, STEERING_PWM_MAX, STEERING_PWM_CENTER)
     steering_right_pwm = rc_utils.percent_to_pwm(steering_right_pct, STEERING_PWM_MIN, STEERING_PWM_MAX, STEERING_PWM_CENTER)
     print(f"steering_left_pwm={steering_left_pwm} steering_right_pwm={steering_right_pwm}")
@@ -170,10 +218,12 @@ def update_manual_control(steering_left, throttle_left, steering_right, throttle
     # Light
     uvc_current_duty = int.from_bytes(light_pct, byteorder='little')
     print(f"[{time.time()}]UVC light: {uvc_current_duty}")
-    if UVC_LIGHT_LAST_DUTY != uvc_current_duty:
-        light_utils.mode_freq(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], PWM_PIN_MAP[UVC_LIGHT_PIN][1], UVC_LIGHT_FREQ)
-        light_utils.mode_duty(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], uvc_current_duty)
-    UVC_LIGHT_LAST_DUTY = uvc_current_duty
+
+    # if UVC_LIGHT_LAST_DUTY != uvc_current_duty:
+    #     light_utils.mode_freq(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], PWM_PIN_MAP[UVC_LIGHT_PIN][1], UVC_LIGHT_FREQ)
+    #     light_utils.mode_duty(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], uvc_current_duty)
+    # UVC_LIGHT_LAST_DUTY = uvc_current_duty
+    light_utils.mode_duty(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], uvc_current_duty)
 
     if HAVE_PIXHAWK:
         # Send the mapped raw PWM values directly
@@ -245,6 +295,12 @@ if __name__ == "__main__":
             print("Arming the vehicle...")
             mav_controller.arm()
             time.sleep(1)  # Wait for a moment to ensure the vehicle is armed
+
+    # Init lights
+    light_utils.mode_freq(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], PWM_PIN_MAP[UVC_LIGHT_PIN][1], UVC_LIGHT_FREQ)
+
+    # Init sensor subscriber
+    start_sensor_subscriber()
     
     # Init threads
     program_stop_event.clear()
@@ -286,4 +342,8 @@ if __name__ == "__main__":
         ser.close()  # Close connection before exiting
         light_utils.mode_freq(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], PWM_PIN_MAP[UVC_LIGHT_PIN][1], UVC_LIGHT_FREQ)
         light_utils.mode_duty(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], 0)
-        light_utils.mode_off(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0])
+        if sensor_subscriber is not None:
+            sensor_subscriber.destroy_node()
+            if rclpy.ok():
+                rclpy.shutdown()
+        # light_utils.mode_off(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0])

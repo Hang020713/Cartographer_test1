@@ -35,7 +35,7 @@ mapped_right_x = 127
 mapped_right_y = 127
 mapped_brush_dir = 1   # 0: idle, 1: rotate up, 2: rotate down
 mapped_brush_speed = 100 # 0 - 100
-mapped_light_pct = 100
+mapped_light_pct = 50
 
 # Threads
 program_stop_event = threading.Event()
@@ -44,7 +44,6 @@ read_joystick_thread = None
 receive_lora_thread = None
 
 # Lora received parameters
-
 
 def read_joystick_thread_func():
     while not program_stop_event.is_set():
@@ -72,11 +71,29 @@ def receive_lora_response():
 def map_joystick_value(x):
     return int(max(0, min(255, (128 / 49) * x + 127 - (128 / 49) * 53)))
 
+def read_frame_2(ser):
+    # Look for start byte (Message ID byte)
+    while True:
+            b = ser.read(2)
+            if not b:                     # timeout, nothing available
+                return
+            if b[0] == 0x0a and b[1] == 0x0d:
+                break
+
+    # print(frame)
+    frame = ser.read(20)
+    if len(frame) < (20):        # incomplete -> resync next loop
+        return None
+
+    return frame
+
 def read_joystick():
     global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct
 
     if input_ser.in_waiting > 0:
-        received_data = input_ser.read(JOYSTICK_BIT_LEN)
+        # received_data = input_ser.read(JOYSTICK_BIT_LEN)
+        # Look for start byte (Message ID byte)
+        received_data = b"\x0a" + b"\x0d" + read_frame_2(input_ser)
         # print(f"Received data: {received_data.hex()}\n-EOF")
 
         # Parse joystick input - CONVERT BYTES TO INT
@@ -231,7 +248,9 @@ Enter your choice: ''').strip()
                         flag = False
 
             elif choice == "3":
-                byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.REQUEST_STATUS, 0x00, 0x00, 0x00, 0x00])
+                byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.REQUEST_STATUS, 
+                                   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                                   ])
                 response = rc_utils.send_bytes(send_ser, byte_data, read_response=False)
                 # print(f"Response: {response}\n-EOF")
             else:

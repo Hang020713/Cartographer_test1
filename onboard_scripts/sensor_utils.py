@@ -8,15 +8,15 @@ from sensor_msgs.msg import Temperature
 
 # INA4230 current/power monitor channels (publish Float64)
 INA4230_TOPIC = [
-    "/ina4230_0x44/channel_1",
-    "/ina4230_0x44/channel_2",
-    "/ina4230_0x44/channel_3",
-    "/ina4230_0x44/channel_4",
+    "/ina4230_0x44/channel_1/raw",
+    "/ina4230_0x44/channel_2/raw",
+    "/ina4230_0x44/channel_3/raw",
+    "/ina4230_0x44/channel_4/raw",
 ]
 
 # SHT3X temperature/humidity sensor
-SHT3X_HUMIDITY_TOPIC = "/sht3x_node/humidity"
-SHT3X_TEMPERATURE_TOPIC = "/sht3x_node/temperature"
+SHT3X_HUMIDITY_TOPIC = "/sht3x_node/humidity/raw"
+SHT3X_TEMPERATURE_TOPIC = "/sht3x_node/temperature/raw"
 
 class SensorSubscriber(Node):
 
@@ -25,6 +25,11 @@ class SensorSubscriber(Node):
 
         # Keep references so subscriptions aren't garbage collected
         self.subscriptions_list = []
+
+        # Store the latest values for access from outside the callbacks
+        self.latest_ina4230_values = {}
+        self.latest_humidity = None
+        self.latest_temperature = None
 
         # INA4230 channels
         for topic in INA4230_TOPIC:
@@ -38,7 +43,8 @@ class SensorSubscriber(Node):
         # SHT3X humidity
         self.subscriptions_list.append(
             self.create_subscription(
-                RelativeHumidity,
+                # RelativeHumidity,
+                Float64,
                 SHT3X_HUMIDITY_TOPIC,
                 self.humidity_callback,
                 10))
@@ -46,19 +52,23 @@ class SensorSubscriber(Node):
         # SHT3X temperature
         self.subscriptions_list.append(
             self.create_subscription(
-                Temperature,
+                # Temperature,
+                Float64,
                 SHT3X_TEMPERATURE_TOPIC,
                 self.temperature_callback,
                 10))
 
     def ina4230_callback(self, topic, msg):
-        self.get_logger().info('[%s] value: %f' % (topic, msg.data))
+        self.latest_ina4230_values[topic] = msg.data
+        # self.get_logger().info('[%s] value: %f' % (topic, msg.data))
 
     def humidity_callback(self, msg):
-        self.get_logger().info('Humidity: %f %%' % msg.relative_humidity)
+        self.latest_humidity = msg.data
+        # self.get_logger().info('Humidity: %f %%' % msg.data)
 
     def temperature_callback(self, msg):
-        self.get_logger().info('Temperature: %f °C' % msg.temperature)
+        self.latest_temperature = msg.data
+        # self.get_logger().info('Temperature: %f °C' % msg.data)
 
 
 def main(args=None):
@@ -67,7 +77,6 @@ def main(args=None):
     rclpy.spin(sensor_subscriber)
     sensor_subscriber.destroy_node()
     rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()
