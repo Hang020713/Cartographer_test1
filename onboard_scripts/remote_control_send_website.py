@@ -301,7 +301,7 @@ DASHBOARD_HTML = """
             const rawX = x === null || x === undefined ? 127 : Number(x);
             const rawY = y === null || y === undefined ? 127 : Number(y);
             const offsetX = clamp(((rawX - 127) / 127) * 50, -50, 50);
-            const offsetY = clamp(((rawY - 127) / 127) * 50, -50, 50);
+            const offsetY = clamp(((rawY - 127) / 127) * -50, -50, 50);
             stickEl.style.transform = `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px))`;
         }
         async function refresh() {
