@@ -14,15 +14,28 @@ SEND_PORT=None  # Serial port to be selected by the user
 SEND_BAUDRATE=None  # Baud rate for the serial communication
 END_CHAR='\n'  # End character for the command
 
+# Joystick parameters
+JOYSTICK_BIT_LEN = 22
+LX_BIT = 2
+LY_BIT = 4
+RX_BIT = 8
+RY_BIT = 6
+BRUSH_DIR_BIT = 18
+BRUSH_SPEED_BIT = 10
+LIGHT_BIT = 12
+
 # Payload parameter
 MESSAGE_ID = 0xAA
 ID = 0x00
 
 # Manual Command parameters
-mapped_left_x = 255
-mapped_left_y = 0
-mapped_right_x = 255
-mapped_right_y = 0
+mapped_left_x = 127
+mapped_left_y = 127
+mapped_right_x = 127
+mapped_right_y = 127
+mapped_brush_dir = 1   # 0: idle, 1: rotate up, 2: rotate down
+mapped_brush_speed = 100 # 0 - 100
+mapped_light_pct = 100
 
 # Threads
 program_stop_event = threading.Event()
@@ -60,24 +73,33 @@ def map_joystick_value(x):
     return int(max(0, min(255, (128 / 49) * x + 127 - (128 / 49) * 53)))
 
 def read_joystick():
-    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y
+    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct
 
     if input_ser.in_waiting > 0:
-        received_data = input_ser.read(22)
+        received_data = input_ser.read(JOYSTICK_BIT_LEN)
         # print(f"Received data: {received_data.hex()}\n-EOF")
 
         # Parse joystick input - CONVERT BYTES TO INT
-        left_joystick_x = received_data[2]
-        left_joystick_y = received_data[4]
-        right_joystick_x = received_data[8]
-        right_joystick_y = received_data[6]
+        left_joystick_x = received_data[LX_BIT]
+        left_joystick_y = received_data[LY_BIT]
+        right_joystick_x = received_data[RX_BIT]
+        right_joystick_y = received_data[RY_BIT]
+        brush_dir = received_data[BRUSH_DIR_BIT]
+        brush_speed = received_data[BRUSH_SPEED_BIT]
+        light_pct = received_data[LIGHT_BIT]
 
         # Map to 0-255
         with joystick_lock:
+            # joystick
             mapped_left_x = map_joystick_value(left_joystick_x)
             mapped_left_y = map_joystick_value(left_joystick_y)
             mapped_right_x = map_joystick_value(right_joystick_x)
             mapped_right_y = map_joystick_value(right_joystick_y)
+
+            # brush
+            mapped_brush_dir = brush_dir - 128
+            mapped_brush_speed = 100 if brush_speed > 100 else brush_speed
+            mapped_light_pct = 100 if light_pct > 100 else light_pct
 
         # print(f"Left Joystick X raw: {left_joystick_x} ({left_joystick_x:02x}h) → mapped: {mapped_left_x}")
         # print(f"Left Joystick Y raw: {left_joystick_y} ({left_joystick_y:02x}h) → mapped: {mapped_left_y}")
@@ -85,16 +107,22 @@ def read_joystick():
         # print(f"Right Joystick Y raw: {right_joystick_y} ({right_joystick_y:02x}h) → mapped: {mapped_right_y}")
         if DEBUG_JOYSTICK:
             print(f"[{time.time()}]LX: {left_joystick_x}, LY: {left_joystick_y}, RX: {right_joystick_x}, RY: {right_joystick_y}")
+            print(f"[{time.time()}]Brush Dir: {mapped_brush_dir}({brush_dir}), speed: {mapped_brush_speed}({brush_speed})")
+            print(f"[{time.time()}]Light: {mapped_light_pct}({light_pct})")
 
 def send_manual_control(read_response=False):
-    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y
+    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct
 
-    byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.MANUAL_CONTROL, mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y])
+    # LX, LY, RX, RY, Brush dir, Brush speed, light
+    byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.MANUAL_CONTROL, 
+                       mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y,
+                       mapped_brush_dir, mapped_brush_speed, mapped_light_pct
+                    ])
     response = rc_utils.send_bytes(send_ser, byte_data, wait_time=0.3, read_response=read_response)
     return response
 
 def send_request_status(read_response=False):
-    byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.REQUEST_STATUS, 0x00, 0x00, 0x00, 0x00])
+    byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.REQUEST_STATUS, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
     response = rc_utils.send_bytes(send_ser, byte_data, wait_time=0.3, read_response=read_response)
     return response
 
@@ -188,11 +216,11 @@ Enter your choice: ''').strip()
                     try:
                         # Send manual command
                         send_manual_control()
-                        time.sleep(0.1)
+                        time.sleep(0.2)
 
                         # Ask for status
                         send_request_status()
-                        time.sleep(0.1)
+                        time.sleep(0.2)
                         # print("request done")
 
                         # Program end
@@ -216,5 +244,6 @@ Enter your choice: ''').strip()
             receive_lora_thread.join(timeout=1)
         if read_joystick_thread is not None:
             read_joystick_thread.join(timeout=1)
-        if not input_ser == None: input_ser.close()
+        if not input_ser == None: 
+            input_ser.close()
         send_ser.close()

@@ -3,6 +3,7 @@ from mavlink_controller import MavController
 import time
 import threading
 import queue
+import light_utils
 
 HAVE_PIXHAWK = False
 
@@ -21,6 +22,7 @@ THROTTLE_RAW_CENTER = 127
 THROTTLE_PWM_MIN = 1000
 THROTTLE_PWM_MAX = 2000
 THROTTLE_PWM_CENTER = 1500
+
 SERVO_LEFT_CHANNEL=3
 SERVO_RIGHT_CHANNEL=5
 STEERING_RAW_MIN = 0
@@ -29,6 +31,20 @@ STEERING_RAW_CENTER = 127
 STEERING_PWM_MIN = 500 
 STEERING_PWM_MAX = 2500
 STEERING_PWM_CENTER = 1500
+
+BRUSH_PWM_MIN = 1000
+BRUSH_PWM_MAX = 2000
+BRUSHED_PWM_CENTER = 1500
+BRUSH_LEFT_CHANNEL=4
+BRUSH_RIGHT_CHANNEL=8
+
+PWM_PIN_MAP = {
+    "18": ("2", "a3"),
+    "19": ("3", "a3"),
+}
+UVC_LIGHT_PIN = "19"
+UVC_LIGHT_FREQ = 2000
+UVC_LIGHT_LAST_DUTY = 0
 
 # Payload parameter
 MESSAGE_ID = 0xAA
@@ -45,6 +61,30 @@ command_queue = queue.Queue()
 program_stop_event = threading.Event()
 command_handler_thread = None
 
+def map_brush_pwm(brush_dir, brush_speed, side):
+    brush_dir_raw = int.from_bytes(brush_dir, byteorder='little')
+    brush_speed_raw = int.from_bytes(brush_speed, byteorder='little')
+
+    brush_speed_pct = brush_speed_raw
+    speed_magnitude = abs(brush_speed_pct) / 100.0
+
+    if brush_dir_raw == 0x00:
+        brush_pwm = BRUSHED_PWM_CENTER
+    elif brush_dir_raw == 0x01:
+        if side == "left":
+            brush_pwm = int(BRUSHED_PWM_CENTER + (speed_magnitude * (BRUSH_PWM_MAX - BRUSHED_PWM_CENTER)))
+        else:
+            brush_pwm = int(BRUSHED_PWM_CENTER - (speed_magnitude * (BRUSHED_PWM_CENTER - BRUSH_PWM_MIN)))
+    elif brush_dir_raw == 0x02:
+        if side == "left":
+            brush_pwm = int(BRUSHED_PWM_CENTER - (speed_magnitude * (BRUSHED_PWM_CENTER - BRUSH_PWM_MIN)))
+        else:
+            brush_pwm = int(BRUSHED_PWM_CENTER + (speed_magnitude * (BRUSH_PWM_MAX - BRUSHED_PWM_CENTER)))
+    else:
+        brush_pwm = BRUSHED_PWM_CENTER
+
+    return int(brush_pwm)
+
 def command_handler_thread_func():
     while not program_stop_event.is_set():
         try:
@@ -57,29 +97,38 @@ def command_handler_thread_func():
         command_type = rc_utils.get_command_type(received_data[1:2])
         
         # Parse command type
-        # match command_type:
-        #     case rc_utils.COMMANDS.REQUEST_STATUS:
-        #         print("Got request status")
+        match command_type:
+            case rc_utils.COMMANDS.REQUEST_STATUS:
+                print("Got request status")
 
-        #         # Send the status
-        #         byte_data = bytes([MESSAGE_ID, ID, current_mode, current_mode_status])
-        #         response = rc_utils.send_bytes(ser, byte_data, read_response=False)
+                # Send the status
+                byte_data = bytes([MESSAGE_ID, ID, current_mode, current_mode_status])
+                response = rc_utils.send_bytes(ser, byte_data, read_response=False)
                 
-        #     case rc_utils.COMMANDS.MANUAL_CONTROL:
-        #         print("Got manual control")
+            case rc_utils.COMMANDS.MANUAL_CONTROL:
+                print("Got manual control")
 
-        #         # Parse the reading
-        #         steering_left = received_data[2:3]  # LX
-        #         throttle_left = received_data[3:4]  # LY
-        #         steering_right = received_data[4:5] # RX
-        #         throttle_right = received_data[5:6] # RY
-        #         print(f"Steering Left: {steering_left.hex()}\nThrottle Left: {throttle_left.hex()}\nSteering Right: {steering_right.hex()}\nThrottle Right: {throttle_right.hex()}\n-EOF")
+                # Parse the reading
+                steering_left = received_data[2:3]  # LX
+                throttle_left = received_data[3:4]  # LY
+                steering_right = received_data[4:5] # RX
+                throttle_right = received_data[5:6] # RY
 
-        #         update_manual_control(steering_left, throttle_left, steering_right, throttle_right)
+                brush_dir = received_data[6:7]
+                brush_speed = received_data[7:8]
+                light_pct = received_data[8:9]
+
+                print(f"[{time.time()}]Steering Left: {steering_left.hex()}\nThrottle Left: {throttle_left.hex()}\nSteering Right: {steering_right.hex()}\nThrottle Right: {throttle_right.hex()}\n-EOF")
+                print(f"[{time.time()}]Brush Dir: {brush_dir}, {brush_speed}")
+                print(f"[{time.time()}]Light: {light_pct}")
+
+                update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct)
         time.sleep(0.01)
 
 
-def update_manual_control(steering_left, throttle_left, steering_right, throttle_right):
+def update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct):
+    global UVC_LIGHT_LAST_DUTY
+
     # Calculate PWM values based on the received data
     throttle_raw_left = int.from_bytes(throttle_left, byteorder='little')
     throttle_raw_right = int.from_bytes(throttle_right, byteorder='little')
@@ -109,6 +158,19 @@ def update_manual_control(steering_left, throttle_left, steering_right, throttle
     print(f"steering_left_pwm={steering_left_pwm} steering_right_pwm={steering_right_pwm}")
     print(f"Set servo positions: Left={steering_left_pwm}, Right={steering_right_pwm}\n-EOF")
 
+    # Brush
+    left_brush_pwm = map_brush_pwm(brush_dir, brush_speed, "left")
+    right_brush_pwm = map_brush_pwm(brush_dir, brush_speed, "right")
+    print(f"[{time.time()}]Left Brush: {left_brush_pwm}, Right Brush: {right_brush_pwm}")
+
+    # Light
+    uvc_current_duty = int.from_bytes(light_pct, byteorder='little')
+    print(f"[{time.time()}]UVC light: {uvc_current_duty}")
+    if UVC_LIGHT_LAST_DUTY != uvc_current_duty:
+        light_utils.mode_freq(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], PWM_PIN_MAP[UVC_LIGHT_PIN][1], UVC_LIGHT_FREQ)
+        light_utils.mode_duty(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], uvc_current_duty)
+    UVC_LIGHT_LAST_DUTY = uvc_current_duty
+
     if HAVE_PIXHAWK:
         # Send the mapped raw PWM values directly
         mav_master.mav.rc_channels_override_send(
@@ -127,6 +189,10 @@ def update_manual_control(steering_left, throttle_left, steering_right, throttle
         # Set servo
         mav_controller.set_servo(SERVO_LEFT_CHANNEL, steering_left_pwm)
         mav_controller.set_servo(SERVO_RIGHT_CHANNEL, steering_right_pwm)
+
+        # Set Brushed
+        mav_controller.set_servo(BRUSH_LEFT_CHANNEL, left_brush_pwm)
+        mav_controller.set_servo(BRUSH_RIGHT_CHANNEL, right_brush_pwm)
 
 # Main Function
 if __name__ == "__main__":
@@ -210,3 +276,5 @@ if __name__ == "__main__":
         if command_handler_thread is not None:
             command_handler_thread.join(timeout=1)
         ser.close()  # Close connection before exiting
+        light_utils.mode_duty(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], 0)
+        light_utils.mode_off(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0])

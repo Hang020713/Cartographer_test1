@@ -36,6 +36,10 @@ function pwm_write {
     }
 }
 
+function pwm_read {
+    cat "$NODE/pwm$CHANNEL/$1" 2>/dev/null
+}
+
 function pwm_init {
     if [ ! -d "$NODE/pwm$CHANNEL" ]; then
         echo "$CHANNEL" | sudo tee "$NODE/export" >/dev/null || {
@@ -50,9 +54,20 @@ case $MODE in
         { [[ -z $VALUE ]] || [[ $VALUE == 0 ]]; } && { echo "错误: 无效频率"; show_usage; }
         PERIOD=$(echo "scale=0; 1000000000/$VALUE" | bc)
         pwm_init
-        # 先把 duty_cycle 归零,避免新 period 小于旧 duty_cycle 时写 period 失败
-        pwm_write "duty_cycle" "0"
-        pwm_write "period" "$PERIOD"
+
+        CUR_PERIOD=$(pwm_read "period")
+        CUR_DUTY=$(pwm_read "duty_cycle")
+
+        # 关键: period 为 0 时不能写 duty_cycle;有残留 duty 时又不能先缩小 period
+        # 策略: 若当前已有周期,先把 duty 归零再改 period;若周期为 0,直接写 period
+        if [[ -n $CUR_PERIOD && $CUR_PERIOD != 0 ]]; then
+            pwm_write "duty_cycle" "0"
+            pwm_write "period" "$PERIOD"
+        else
+            pwm_write "period" "$PERIOD"
+            pwm_write "duty_cycle" "0"
+        fi
+
         pwm_write "enable" "1"
         sudo pinctrl set $PIN $FUNC
         echo "引脚$PIN: 频率=${VALUE}Hz (周期=${PERIOD}ns)"
@@ -60,8 +75,7 @@ case $MODE in
     "duty")
         [[ -z $VALUE ]] && { echo "错误: 无效占空比"; show_usage; }
         pwm_init
-        # 从 sysfs 读回当前周期,而不是依赖内存变量
-        PERIOD=$(cat "$NODE/pwm$CHANNEL/period")
+        PERIOD=$(pwm_read "period")
         { [[ -z $PERIOD ]] || [[ $PERIOD == 0 ]]; } && {
             echo "错误: 周期未设置,请先运行 freq 模式"; exit 1
         }

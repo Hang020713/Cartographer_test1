@@ -4,7 +4,7 @@ import os
 import serial.tools.list_ports
 from enum import IntEnum
 
-INQUERY_PAYLOAD_LEN = 7
+INQUERY_PAYLOAD_LEN = 10
 STATUS_PAYLOAD_LEN = 4
 
 class COMMANDS(IntEnum):
@@ -87,6 +87,7 @@ def read_frame(ser, start_byte, payload_length):
 
     # Read the fixed-length payload
     frame = ser.read(payload_length - 1)
+    # print(frame)
     if len(frame) < (payload_length - 1):        # incomplete -> resync next loop
         return None
 
@@ -161,11 +162,11 @@ def send_config_command(ser, command=None, wait_time=1, end_char='\n'):
         response = ser.read(ser.in_waiting)
         print(response)
 
-        # print(f"Sending command: {entm_command}")
-        # ser.write((entm_command + end_char).encode())
-        # time.sleep(wait_time)
-        # response = ser.read(ser.in_waiting)
-        # print(response)
+        print(f"Sending command: {entm_command}")
+        ser.write((entm_command + end_char).encode())
+        time.sleep(wait_time)
+        response = ser.read(ser.in_waiting)
+        print(response)
         
         # return response.decode('utf-8', errors='ignore')
         # TODO: fix this
