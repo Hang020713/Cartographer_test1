@@ -4,6 +4,7 @@ import time
 import threading
 import queue
 import light_utils
+import camera_utils
 
 HAVE_PIXHAWK = False
 
@@ -45,6 +46,9 @@ PWM_PIN_MAP = {
 UVC_LIGHT_PIN = "19"
 UVC_LIGHT_FREQ = 2000
 UVC_LIGHT_LAST_DUTY = 0
+
+# Camera
+camera_recorder = None
 
 # Payload parameter
 MESSAGE_ID = 0xAA
@@ -249,6 +253,10 @@ if __name__ == "__main__":
         command_handler_thread.start()
     print("lora receive thread started and will keep running.")
 
+    # Init camera
+    camera_recorder = camera_utils.CameraRecorder()
+    print("Camera init")
+
     # Parse the command
     try:
         while True:
@@ -276,5 +284,6 @@ if __name__ == "__main__":
         if command_handler_thread is not None:
             command_handler_thread.join(timeout=1)
         ser.close()  # Close connection before exiting
+        light_utils.mode_freq(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], PWM_PIN_MAP[UVC_LIGHT_PIN][1], UVC_LIGHT_FREQ)
         light_utils.mode_duty(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], 0)
         light_utils.mode_off(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0])
