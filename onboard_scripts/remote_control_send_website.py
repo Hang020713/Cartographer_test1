@@ -6,7 +6,7 @@ from enum import IntEnum
 from flask import Flask, jsonify, render_template_string
 
 # Debug parameter
-HAVE_JOYSTICK=False
+HAVE_JOYSTICK=True
 DEBUG_JOYSTICK=False
 WEB_DASHBOARD=True          # NEW: enable the web dashboard
 WEB_HOST="0.0.0.0"          # NEW
@@ -439,45 +439,47 @@ def send_request_status(read_response=False):
 # Main Function
 if __name__ == "__main__":
     input_ser = None
-    if HAVE_JOYSTICK:
-        # Input serial port and baud rate for receiving data
-        print("-------------Receive Serial Port START-----------------\n")
-        INPUT_BAUDRATE = rc_utils.select_baudrate(115200)
-        print(f"Selected baudrate: {INPUT_BAUDRATE}")
+    # if HAVE_JOYSTICK:
+    #     # Input serial port and baud rate for receiving data
+    #     print("-------------Receive Serial Port START-----------------\n")
+    #     INPUT_BAUDRATE = rc_utils.select_baudrate(115200)
+    #     print(f"Selected baudrate: {INPUT_BAUDRATE}")
         
-        # Select the serial port for receiving data
-        INPUT_PORT = rc_utils.select_serial_port(INPUT_PORT)
-        print(f"Selected port for receiving data: {INPUT_PORT}")
+    #     # Select the serial port for receiving data
+    #     INPUT_PORT = rc_utils.select_serial_port(INPUT_PORT)
+    #     print(f"Selected port for receiving data: {INPUT_PORT}")
 
-        # Check port selected
-        if INPUT_PORT is None:
-            print("No port selected. Exiting.")
-            raise SystemExit(1)
+    #     # Check port selected
+    #     if INPUT_PORT is None:
+    #         print("No port selected. Exiting.")
+    #         raise SystemExit(1)
 
-        # Init serial connection
-        input_ser = rc_utils.init_serial_connection(INPUT_PORT, INPUT_BAUDRATE)
-        if input_ser is None:
-            raise SystemExit(1)
-        print("-------------Receive Serial Port END-----------------\n")
+    #     # Init serial connection
+    #     input_ser = rc_utils.init_serial_connection(INPUT_PORT, INPUT_BAUDRATE)
+    #     if input_ser is None:
+    #         raise SystemExit(1)
+    #     print("-------------Receive Serial Port END-----------------\n")
+    input_ser = rc_utils.init_serial_connection("/dev/ttyUSB0", 115200)
 
     # Send serial port and baud rate selection
-    print("-------------Send Serial Port START-----------------\n")
-    SEND_BAUDRATE = rc_utils.select_baudrate(4800)
-    print(f"Select baudrate: {SEND_BAUDRATE}")
+    # print("-------------Send Serial Port START-----------------\n")
+    # SEND_BAUDRATE = rc_utils.select_baudrate(4800)
+    # print(f"Select baudrate: {SEND_BAUDRATE}")
 
-    # Select the serial port
-    SEND_PORT = rc_utils.select_serial_port(SEND_PORT)
-    print(f"Selected port: {SEND_PORT}")
+    # # Select the serial port
+    # SEND_PORT = rc_utils.select_serial_port(SEND_PORT)
+    # print(f"Selected port: {SEND_PORT}")
 
-    # Check port selected
-    if SEND_PORT is None:
-        print("No port selected. Exiting.")
-        raise SystemExit(1)
+    # # Check port selected
+    # if SEND_PORT is None:
+    #     print("No port selected. Exiting.")
+    #     raise SystemExit(1)
 
-    # Init serial connection
-    send_ser = rc_utils.init_serial_connection(SEND_PORT, SEND_BAUDRATE)
-    if send_ser is None:
-        raise SystemExit(1)
+    # # Init serial connection
+    # send_ser = rc_utils.init_serial_connection(SEND_PORT, SEND_BAUDRATE)
+    # if send_ser is None:
+    #     raise SystemExit(1)
+    send_ser = rc_utils.init_serial_connection("/dev/ttyACM0", 4800)
 
     # Configure the device
     response = rc_utils.send_config_command(send_ser, end_char=END_CHAR)
