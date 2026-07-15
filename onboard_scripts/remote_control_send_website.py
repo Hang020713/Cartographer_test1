@@ -595,11 +595,11 @@ if __name__ == "__main__":
     try:
         while True:
             send_manual_control()
-            time.sleep(0.2)
+            time.sleep(0.1)
 
             # Ask for status
             send_request_status()
-            time.sleep(0.2)
+            time.sleep(0.1)
             # print("request done")
 #             choice = input('''Select an option:
 # 0: exit program
