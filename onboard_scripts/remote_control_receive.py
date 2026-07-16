@@ -71,6 +71,12 @@ command_handler_thread = None
 sensor_subscriber = None
 sensor_spin_thread = None
 
+# Command heartbeat watchdog
+COMMAND_HEARTBEAT_TIMEOUT_S = 2.0
+last_command_time = None
+command_link_active = True
+mav_controller = None
+mav_master = None
 
 def start_sensor_subscriber():
     global sensor_subscriber, sensor_spin_thread
@@ -110,6 +116,42 @@ def get_latest_sensor_readings():
         "module_voltage": sensor_subscriber.latest_module_voltage,
         "percentage": sensor_subscriber.latest_percentage,
     }
+
+
+def mark_command_received():
+    global last_command_time, command_link_active
+
+    last_command_time = time.time()
+    if not command_link_active:
+        command_link_active = True
+        print("Command link restored; resuming MAVLink output.")
+
+
+def update_command_watchdog():
+    global last_command_time, command_link_active
+
+    if last_command_time is None:
+        last_command_time = time.time()
+
+    if rc_utils.has_heartbeat_timed_out(last_command_time, COMMAND_HEARTBEAT_TIMEOUT_S):
+        if command_link_active:
+            command_link_active = False
+            print(f"No command received for {COMMAND_HEARTBEAT_TIMEOUT_S}s; pausing MAVLink output.")
+            disable_mavlink_output()
+
+    return command_link_active
+
+
+def disable_mavlink_output():
+    if not HAVE_PIXHAWK or mav_controller is None:
+        return
+
+    print("Stopping MAVLink output to protect the vehicle.")
+    mav_controller.set_servo(SERVO_LEFT_CHANNEL, STEERING_PWM_CENTER)
+    mav_controller.set_servo(SERVO_RIGHT_CHANNEL, STEERING_PWM_CENTER)
+    mav_controller.set_servo(BRUSH_LEFT_CHANNEL, BRUSHED_PWM_CENTER)
+    mav_controller.set_servo(BRUSH_RIGHT_CHANNEL, BRUSHED_PWM_CENTER)
+    mav_controller.rc_channels_override_send(THROTTLE_PWM_CENTER, THROTTLE_PWM_CENTER)
 
 
 def map_brush_pwm(brush_dir, brush_speed, side):
@@ -317,6 +359,8 @@ if __name__ == "__main__":
             print("Waiting for connection...")
             time.sleep(1)
 
+        mark_command_received()
+
         # Arm the vehicle
         if not mav_controller.is_armed:
             print("Arming the vehicle...")
@@ -346,7 +390,10 @@ if __name__ == "__main__":
             # Receive lora thread
             received_data = rc_utils.read_frame(ser, MESSAGE_ID, rc_utils.INQUERY_PAYLOAD_LEN)
             if received_data is None:
+                update_command_watchdog()
                 continue
+
+            mark_command_received()
 
             # Really received new command
             # print("[Lora] Received new command")

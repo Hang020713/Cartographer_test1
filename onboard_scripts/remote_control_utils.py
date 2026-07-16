@@ -45,6 +45,15 @@ def get_mode_status(mode_status):
     except ValueError:
         return "N/A"
 
+def has_heartbeat_timed_out(last_seen_time, timeout_seconds, now=None):
+    if last_seen_time is None:
+        return True
+
+    if now is None:
+        now = time.time()
+
+    return (now - last_seen_time) > timeout_seconds
+
 def raw_to_percent(
     raw: int,
     raw_min: int,
