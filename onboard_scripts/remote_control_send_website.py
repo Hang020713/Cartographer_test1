@@ -189,6 +189,7 @@ DASHBOARD_HTML = """
             display: flex; align-items: center; justify-content: center; overflow: hidden;
         }
         .image-wrap img {
+            background-color: white;
             height: 100%;
             object-fit: cover;
             transition: transform 0.3s ease;
@@ -257,7 +258,7 @@ DASHBOARD_HTML = """
             <div class="card"><span class="label">Humidity</span><span class="value"><span id="humidity">--</span><span class="unit">%</span></span></div>
             <div class="card"><span class="label">Temperature</span><span class="value"><span id="temperature">--</span><span class="unit">&deg;C</span></span></div>
             <div class="card"><span class="label">Discharge Current</span><span class="value"><span id="discharge_current">--</span><span class="unit">A</span></span></div>
-            <div class="card"><span class="label">Voltage</span><span class="value"><span id="module_voltage">--</span><span class="unit">V</span></span></div>
+            <div class="card"><span class="label">Battery Voltage</span><span class="value"><span id="module_voltage">--</span><span class="unit">V</span></span></div>
             <div class="card"><span class="label">Battery %</span><span class="value"><span id="battery_percentage">--</span><span class="unit">%</span></span></div>
 
             <div class="section-title">Left Joystick</div>
@@ -273,7 +274,7 @@ DASHBOARD_HTML = """
         <div class="panel">
             <h2>Camera / Image</h2>
             <div class="image-wrap">
-                <img src="/static/pure_square_map.png" alt="map">
+                <img src="/static/GDIT Logo (RGB)_Dog Logo_Golden.svg" alt="map">
             </div>
             <div class="mode-badges">
                 <div class="badge"><div class="k">Mode</div><div class="v" id="mode">--</div></div>
