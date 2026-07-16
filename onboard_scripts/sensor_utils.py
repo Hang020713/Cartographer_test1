@@ -3,8 +3,7 @@ from rclpy.node import Node
 from functools import partial
 
 from std_msgs.msg import Float64
-from sensor_msgs.msg import RelativeHumidity
-from sensor_msgs.msg import Temperature
+from sensor_msgs.msg import BatteryState
 
 # INA4230 current/power monitor channels (publish Float64)
 INA4230_TOPIC = [
@@ -18,6 +17,9 @@ INA4230_TOPIC = [
 SHT3X_HUMIDITY_TOPIC = "/sht3x_node/humidity/raw"
 SHT3X_TEMPERATURE_TOPIC = "/sht3x_node/temperature/raw"
 
+# BMS485
+BMS485_TOPIC = "/bms485/battery"
+
 class SensorSubscriber(Node):
 
     def __init__(self):
@@ -30,6 +32,10 @@ class SensorSubscriber(Node):
         self.latest_ina4230_values = {}
         self.latest_humidity = None
         self.latest_temperature = None
+
+        self.latest_discharge_current = None
+        self.latest_module_voltage = None
+        self.latest_percentage = None
 
         # INA4230 channels
         for topic in INA4230_TOPIC:
@@ -57,6 +63,14 @@ class SensorSubscriber(Node):
                 SHT3X_TEMPERATURE_TOPIC,
                 self.temperature_callback,
                 10))
+        
+        # BMS485
+        self.subscriptions_list.append(
+            self.create_subscription(
+                BatteryState,
+                BMS485_TOPIC,
+                self.temperature_callback,
+                10))
 
     def ina4230_callback(self, topic, msg):
         self.latest_ina4230_values[topic] = msg.data
@@ -70,6 +84,10 @@ class SensorSubscriber(Node):
         self.latest_temperature = msg.data
         # self.get_logger().info('Temperature: %f °C' % msg.data)
 
+    def bms485_callback(self, msg):
+        self.latest_discharge_current = msg.discharge_current
+        self.latest_module_voltage = msg.module_voltage
+        self.latest_percentage = msg.percentage
 
 def main(args=None):
     rclpy.init(args=args)

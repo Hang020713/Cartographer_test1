@@ -394,7 +394,10 @@ def parse_status_payload(raw_payload):
         start = 3 + channel_index * 2
         end = start + 2
         if end <= len(payload):
-            sensor_channels.append(int.from_bytes(payload[start:end], byteorder="big") * CURRENT_LSB)
+            # Interpret sensor channel as signed 16-bit (two's complement).
+            # sensor_channels.append(int.from_bytes(payload[start:end], byteorder="big") * CURRENT_LSB)
+            raw = int.from_bytes(payload[start:end], byteorder="big", signed=True)
+            sensor_channels.append(raw * CURRENT_LSB)
         else:
             sensor_channels.append(None)
 

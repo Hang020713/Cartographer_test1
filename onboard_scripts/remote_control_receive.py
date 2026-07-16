@@ -10,6 +10,8 @@ import rclpy
 
 HAVE_PIXHAWK = True
 
+
+
 # Functions Parameters
 INPUT_PORT=None  # Serial port to be selected by the user
 INPUT_BAUDRATE=None  # Baud rate for the serial communication
@@ -95,12 +97,18 @@ def get_latest_sensor_readings():
             "ina4230": {},
             "humidity": None,
             "temperature": None,
+            "discharge_current": None,
+            "module_voltage": None,
+            "percentage": None
         }
 
     return {
         "ina4230": dict(sensor_subscriber.latest_ina4230_values),
         "humidity": sensor_subscriber.latest_humidity,
         "temperature": sensor_subscriber.latest_temperature,
+        "discharge_current": sensor_subscriber.latest_discharge_current,
+        "module_voltage": sensor_subscriber.latest_module_voltage,
+        "percentage": sensor_subscriber.latest_percentage,
     }
 
 
@@ -150,6 +158,7 @@ def command_handler_thread_func():
                 # print(readings["humidity"])
                 # print(readings["temperature"])
                 print(f"[{time.time()}]Sensors: INA4230={sensor_readings['ina4230']} Humidity={sensor_readings['humidity']} Temperature={sensor_readings['temperature']}")
+                print(f"[{time.time()}]discharge current={sensor_readings['discharge_current']}, module_voltage={sensor_readings['module_voltage']}, percentage={sensor_readings['percentage']}")
 
                 sensor_bytes = []
                 for value in sensor_readings["ina4230"].values():
@@ -216,10 +225,12 @@ def update_manual_control(steering_left, throttle_left, steering_right, throttle
     steering_left_pct = rc_utils.raw_to_percent(steering_raw_left, STEERING_RAW_MIN, STEERING_RAW_MAX, STEERING_RAW_CENTER)
     steering_right_pct = rc_utils.raw_to_percent(steering_raw_right, STEERING_RAW_MIN, STEERING_RAW_MAX, STEERING_RAW_CENTER)
 
-    if throttle_avg_pct < 0:
-        steering_left_pct = -steering_left_pct
-        steering_right_pct = -steering_right_pct
+    # if throttle_avg_pct < 0:
+    #     steering_left_pct = -steering_left_pct
+    #     steering_right_pct = -steering_right_pct
 
+    # steering_left_pwm = rc_utils.percent_to_pwm(steering_left_pct, STEERING_PWM_MAX, STEERING_PWM_MIN, STEERING_PWM_CENTER)
+    # steering_right_pwm = rc_utils.percent_to_pwm(steering_right_pct, STEERING_PWM_MAX, STEERING_PWM_MIN, STEERING_PWM_CENTER)
     steering_left_pwm = rc_utils.percent_to_pwm(steering_left_pct, STEERING_PWM_MIN, STEERING_PWM_MAX, STEERING_PWM_CENTER)
     steering_right_pwm = rc_utils.percent_to_pwm(steering_right_pct, STEERING_PWM_MIN, STEERING_PWM_MAX, STEERING_PWM_CENTER)
     print(f"steering_left_pwm={steering_left_pwm} steering_right_pwm={steering_right_pwm}")
