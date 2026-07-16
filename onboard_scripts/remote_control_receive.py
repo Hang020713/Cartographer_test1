@@ -257,6 +257,10 @@ def command_handler_thread_func():
                 print(f"[{time.time()}]Light: {light_pct}")
 
                 if onoff:
+                    if not mav_controller.is_armed:
+                        print("Arming the vehicle...")
+                        mav_controller.arm()    
+
                     update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct)
                 else:
                     if not (onoff == last_onoff):
