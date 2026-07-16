@@ -40,7 +40,7 @@ mapped_right_x = 127
 mapped_right_y = 127
 mapped_brush_dir = 0   # 0: idle, 1: rotate up, 2: rotate down
 mapped_brush_speed = 0 # 0 - 100
-mapped_light_pct = 50
+mapped_light_pct = 0
 
 # Threads
 program_stop_event = threading.Event()
