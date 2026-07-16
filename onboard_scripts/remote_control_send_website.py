@@ -28,6 +28,7 @@ RY_BIT = 6
 BRUSH_DIR_BIT = 18
 BRUSH_SPEED_BIT = 10
 LIGHT_BIT = 12
+ONOFF_BIT = 19
 
 # Payload parameter
 MESSAGE_ID = 0xAA
@@ -41,6 +42,7 @@ mapped_right_y = 127
 mapped_brush_dir = 0   # 0: idle, 1: rotate up, 2: rotate down
 mapped_brush_speed = 0 # 0 - 100
 mapped_light_pct = 0
+mapped_onoff = 0
 
 # Threads
 program_stop_event = threading.Event()
@@ -76,6 +78,7 @@ latest_status = {
     "brush_direction": None,
     "brush_speed": None,
     "light_pct": None,
+    "onoff": None,
 }
 
 
@@ -107,6 +110,7 @@ def update_latest_joystick_status():
         brush_direction = mapped_brush_dir
         brush_speed = mapped_brush_speed
         light_pct = mapped_light_pct
+        onoff = mapped_onoff
 
     with status_lock:
         latest_status["timestamp"] = time.time()
@@ -117,6 +121,7 @@ def update_latest_joystick_status():
         latest_status["brush_direction"] = brush_direction
         latest_status["brush_speed"] = brush_speed
         latest_status["light_pct"] = light_pct
+        latest_status["onoff"] = onoff
 
 
 # ---------------------------------------------------------------------------
@@ -274,6 +279,7 @@ DASHBOARD_HTML = """
             <div class="card"><span class="label">Brush Direction</span><span class="value"><span id="brush_direction">--</span></span></div>
             <div class="card"><span class="label">Brush Speed</span><span class="value"><span id="brush_speed">--</span><span class="unit">%</span></span></div>
             <div class="card"><span class="label">Light</span><span class="value"><span id="light_pct">--</span><span class="unit">%</span></span></div>
+            <div class="card"><span class="label">On / Off</span><span class="value"><span id="onoff_status">--</span></span></div>
 
             <div class="section-title">Right Joystick</div>
             <div class="joystick-widget">
@@ -296,6 +302,10 @@ DASHBOARD_HTML = """
             if (Number(v) === 0) return "Idle";
             else if(Number(v) === 1) return "CW";
             else if(Number(v) === 2) return "CCW";
+        }
+        function fmtOnOff(v) {
+            if (v === null || v === undefined) return "--";
+            return Number(v) === 0 ? "OFF" : "ON";
         }
         function clamp(v, min, max) {
             return Math.min(max, Math.max(min, v));
@@ -324,6 +334,7 @@ DASHBOARD_HTML = """
                 document.getElementById('brush_direction').textContent = fmtBrushDirection(d.brush_direction);
                 document.getElementById('brush_speed').textContent = fmt(d.brush_speed, 0);
                 document.getElementById('light_pct').textContent = fmt(d.light_pct, 0);
+                document.getElementById('onoff_status').textContent = fmtOnOff(d.onoff);
 
                 const dot = document.getElementById('live-dot');
                 const lbl = document.getElementById('last-update');
@@ -468,7 +479,7 @@ def read_frame_2(ser):
     return frame
 
 def read_joystick():
-    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct
+    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff
 
     if input_ser.in_waiting > 0:
         # received_data = input_ser.read(JOYSTICK_BIT_LEN)
@@ -484,6 +495,7 @@ def read_joystick():
         brush_dir = received_data[BRUSH_DIR_BIT]
         brush_speed = received_data[BRUSH_SPEED_BIT]
         light_pct = received_data[LIGHT_BIT]
+        onoff = received_data[ONOFF_BIT]
 
         # Map to 0-255
         with joystick_lock:
@@ -498,12 +510,15 @@ def read_joystick():
             mapped_brush_speed = 100 if brush_speed > 100 else brush_speed
             mapped_light_pct = 100 if light_pct > 100 else light_pct
 
+            mapped_onoff = onoff
+
         update_latest_joystick_status()
 
         if DEBUG_JOYSTICK:
             print(f"[{time.time()}]LX: {left_joystick_x}, LY: {left_joystick_y}, RX: {right_joystick_x}, RY: {right_joystick_y}")
             print(f"[{time.time()}]Brush Dir: {mapped_brush_dir}({brush_dir}), speed: {mapped_brush_speed}({brush_speed})")
             print(f"[{time.time()}]Light: {mapped_light_pct}({light_pct})")
+            print(f"[{time.time()}]OnOff: {mapped_onoff}")
 
 def send_manual_control(read_response=False):
     global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct
@@ -517,7 +532,7 @@ def send_manual_control(read_response=False):
     return response
 
 def send_request_status(read_response=False):
-    byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.REQUEST_STATUS, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+    byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.REQUEST_STATUS, mapped_onoff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
     response = rc_utils.send_bytes(send_ser, byte_data, wait_time=0.3, read_response=read_response)
     return response
 

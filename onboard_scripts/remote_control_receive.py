@@ -61,6 +61,8 @@ ID = 0x00
 # Current system status
 current_mode = rc_utils.MODES.MANUAL
 current_mode_status = rc_utils.MODE_STATUS.ONGOING
+onoff = 0
+last_onoff = 0
 
 # Command queue
 command_queue = queue.Queue()
@@ -189,6 +191,8 @@ def map_brush_pwm(brush_dir, brush_speed, side):
     return int(brush_pwm)
 
 def command_handler_thread_func():
+    global onoff, last_onoff
+
     while not program_stop_event.is_set():
         try:
             next_command = command_queue.get(timeout=0.1)
@@ -203,6 +207,7 @@ def command_handler_thread_func():
         match command_type:
             case rc_utils.COMMANDS.REQUEST_STATUS:
                 print("Got request status")
+                onoff = int.from_bytes(next_command[2:3], byteorder='little')
 
                 # Sensor readings (latest raw values from the ROS2 subscriber)
                 sensor_readings = get_latest_sensor_readings()
@@ -251,7 +256,13 @@ def command_handler_thread_func():
                 print(f"[{time.time()}]Brush Dir: {brush_dir}, {brush_speed}")
                 print(f"[{time.time()}]Light: {light_pct}")
 
-                update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct)
+                if onoff:
+                    update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct)
+                else:
+                    if not (onoff == last_onoff):
+                        disable_mavlink_output()
+                last_onoff = onoff
+                    
         time.sleep(0.01)
 
 
