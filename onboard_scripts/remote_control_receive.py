@@ -127,6 +127,15 @@ def mark_command_received():
         print("Command link restored; resuming MAVLink output.")
 
 
+def mark_manual_control_received():
+    global last_command_time, command_link_active
+
+    last_command_time = time.time()
+    if not command_link_active:
+        command_link_active = True
+        print("Manual control link restored; resuming MAVLink output.")
+
+
 def update_command_watchdog():
     global last_command_time, command_link_active
 
@@ -393,7 +402,11 @@ if __name__ == "__main__":
                 update_command_watchdog()
                 continue
 
-            mark_command_received()
+            # Only manual-control frames should refresh the heartbeat/watchdog.
+            if command_type == rc_utils.COMMANDS.MANUAL_CONTROL:
+                mark_manual_control_received()
+            else:
+                mark_command_received()
 
             # Really received new command
             # print("[Lora] Received new command")
