@@ -293,7 +293,7 @@ def command_handler_thread_func():
                 brush_dir = next_command[6:7]
                 brush_speed = next_command[7:8]
                 light_pct = next_command[8:9]
-                onoff = next_command[9:10]
+                onoff = int.from_bytes(next_command[9:10], byteorder='little')
 
                 print(f"[{time.time()}]Steering Left: {steering_left.hex()}\nThrottle Left: {throttle_left.hex()}\nSteering Right: {steering_right.hex()}\nThrottle Right: {throttle_right.hex()}\n-EOF")
                 print(f"[{time.time()}]Brush Dir: {brush_dir}, {brush_speed}")
