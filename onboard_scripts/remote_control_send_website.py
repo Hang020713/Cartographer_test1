@@ -545,6 +545,7 @@ if __name__ == "__main__":
     #         raise SystemExit(1)
     #     print("-------------Receive Serial Port END-----------------\n")
     input_ser = rc_utils.init_serial_connection("/dev/ttyUSB0", 115200)
+    time.sleep(2)
 
     # Send serial port and baud rate selection
     # print("-------------Send Serial Port START-----------------\n")
@@ -565,6 +566,7 @@ if __name__ == "__main__":
     # if send_ser is None:
     #     raise SystemExit(1)
     send_ser = rc_utils.init_serial_connection("/dev/ttyACM0", 4800)
+    time.sleep(2)
 
     # Configure the device
     response = rc_utils.send_config_command(send_ser, end_char=END_CHAR)
