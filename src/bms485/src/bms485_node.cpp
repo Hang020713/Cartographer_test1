@@ -134,7 +134,7 @@ public:
     Bms485Node() : Node("bms485_node")
     {
         // ----- Parameters -----
-        serial_port_     = declare_parameter<std::string>("serial_port", "/dev/ttyAMA0");
+        serial_port_     = declare_parameter<std::string>("serial_port", "/dev/ttyAMA3");
         slave_id_        = (uint8_t)declare_parameter<int>("slave_id", 1);
         poll_period_     = declare_parameter<double>("poll_period", 1.0);
         error_period_    = declare_parameter<double>("error_period", 2.0);
@@ -323,7 +323,7 @@ private:
         bat.voltage    = data.module_voltage;
         // current: positive = charging, negative = discharging (ROS convention)
         bat.current    = data.charge_current - data.discharge_current;  //mAh
-        bat.charge     = data.total_capacity;
+        bat.charge     = data.total_capacity;   
         bat.percentage = data.soc;
         bat.present    = data.module_valid;
         bat.power_supply_status =
