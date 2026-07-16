@@ -18,7 +18,7 @@ SHT3X_HUMIDITY_TOPIC = "/sht3x_node/humidity/raw"
 SHT3X_TEMPERATURE_TOPIC = "/sht3x_node/temperature/raw"
 
 # BMS485
-BMS485_TOPIC = "/bms485/battery"
+BMS485_TOPIC = "/bms485_node/battery"
 
 class SensorSubscriber(Node):
 
@@ -69,7 +69,7 @@ class SensorSubscriber(Node):
             self.create_subscription(
                 BatteryState,
                 BMS485_TOPIC,
-                self.temperature_callback,
+                self.bms485_callback,
                 10))
 
     def ina4230_callback(self, topic, msg):
@@ -85,8 +85,8 @@ class SensorSubscriber(Node):
         # self.get_logger().info('Temperature: %f °C' % msg.data)
 
     def bms485_callback(self, msg):
-        self.latest_discharge_current = msg.discharge_current
-        self.latest_module_voltage = msg.module_voltage
+        self.latest_discharge_current = -msg.current
+        self.latest_module_voltage = msg.voltage
         self.latest_percentage = msg.percentage
 
 def main(args=None):

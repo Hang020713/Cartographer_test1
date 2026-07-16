@@ -69,6 +69,9 @@ latest_status = {
     "sensor_channels": [None, None, None, None],  # 4 motor currents (A)
     "humidity_pct": None,
     "temperature_c": None,
+    "discharge_current_a": None,
+    "module_voltage_v": None,
+    "battery_percentage": None,
     "humidity_raw": None,
     "temperature_raw": None,
     "left_joystick_x": None,
@@ -96,6 +99,9 @@ def update_latest_status(parsed):
                                                        [None, None, None, None])
         latest_status["humidity_pct"] = parsed.get("humidity_pct")
         latest_status["temperature_c"] = parsed.get("temperature_c")
+        latest_status["discharge_current_a"] = parsed.get("discharge_current_a")
+        latest_status["module_voltage_v"] = parsed.get("module_voltage_v")
+        latest_status["battery_percentage"] = parsed.get("battery_percentage")
         latest_status["humidity_raw"] = parsed.get("humidity_raw")
         latest_status["temperature_raw"] = parsed.get("temperature_raw")
 
@@ -250,6 +256,9 @@ DASHBOARD_HTML = """
             <div class="section-title">Environment</div>
             <div class="card"><span class="label">Humidity</span><span class="value"><span id="humidity">--</span><span class="unit">%</span></span></div>
             <div class="card"><span class="label">Temperature</span><span class="value"><span id="temperature">--</span><span class="unit">&deg;C</span></span></div>
+            <div class="card"><span class="label">Discharge Current</span><span class="value"><span id="discharge_current">--</span><span class="unit">A</span></span></div>
+            <div class="card"><span class="label">Voltage</span><span class="value"><span id="module_voltage">--</span><span class="unit">V</span></span></div>
+            <div class="card"><span class="label">Battery %</span><span class="value"><span id="battery_percentage">--</span><span class="unit">%</span></span></div>
 
             <div class="section-title">Left Joystick</div>
             <div class="joystick-widget">
@@ -327,6 +336,9 @@ DASHBOARD_HTML = """
                 }
                 document.getElementById('humidity').textContent = fmt(d.humidity_pct, 1);
                 document.getElementById('temperature').textContent = fmt(d.temperature_c, 1);
+                document.getElementById('discharge_current').textContent = fmt(d.discharge_current_a, 3);
+                document.getElementById('module_voltage').textContent = fmt(d.module_voltage_v, 2);
+                document.getElementById('battery_percentage').textContent = fmt(d.battery_percentage, 1);
                 updateJoystickVisual(document.getElementById('left_joy_stick'), d.left_joystick_x, d.left_joystick_y);
                 updateJoystickVisual(document.getElementById('right_joy_stick'), d.right_joystick_x, d.right_joystick_y);
                 document.getElementById('mode').textContent = d.mode ?? '--';
@@ -414,13 +426,19 @@ def parse_status_payload(raw_payload):
 
     parsed["sensor_channels"] = sensor_channels
 
-    if len(payload) >= 15:
+    if len(payload) >= 21:
         humidity_raw = int.from_bytes(payload[11:13], byteorder="big")
         temperature_raw = int.from_bytes(payload[13:15], byteorder="big")
+        discharge_current_raw = int.from_bytes(payload[15:17], byteorder="big", signed=True)
+        module_voltage_raw = int.from_bytes(payload[17:19], byteorder="big", signed=True)
+        percentage_raw = int.from_bytes(payload[19:21], byteorder="big", signed=True)
         parsed["humidity_raw"] = humidity_raw
         parsed["temperature_raw"] = temperature_raw
         parsed["humidity_pct"] = kHumScale * (humidity_raw / kRawMax)
         parsed["temperature_c"] = kTempOffset + kTempScale * (temperature_raw / kRawMax)
+        parsed["discharge_current_a"] = discharge_current_raw / 1000.0
+        parsed["module_voltage_v"] = module_voltage_raw / 100.0
+        parsed["battery_percentage"] = percentage_raw / 10.0
 
     return parsed
 
@@ -457,6 +475,9 @@ def receive_lora_response():
     if "humidity_raw" in parsed_status:
         print(f"[{time.time()}] humidity: {parsed_status['humidity_raw']} (raw) -> {parsed_status['humidity_pct']} %")
         print(f"[{time.time()}] temperature: {parsed_status['temperature_raw']} (raw) -> {parsed_status['temperature_c']} °C")
+        print(f"[{time.time()}] discharge current: {parsed_status['discharge_current_a']} A")
+        print(f"[{time.time()}] voltage: {parsed_status['module_voltage_v']} V")
+        print(f"[{time.time()}] percentage: {parsed_status['battery_percentage']} %")
 
 # Joystick functions
 def map_joystick_value(x):
@@ -521,12 +542,12 @@ def read_joystick():
             print(f"[{time.time()}]OnOff: {mapped_onoff}")
 
 def send_manual_control(read_response=False):
-    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct
+    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff
 
     # LX, LY, RX, RY, Brush dir, Brush speed, light
     byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.MANUAL_CONTROL, 
                        mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y,
-                       mapped_brush_dir, mapped_brush_speed, mapped_light_pct
+                       mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff
                     ])
     response = rc_utils.send_bytes(send_ser, byte_data, wait_time=0.3, read_response=read_response)
     return response
@@ -624,8 +645,9 @@ if __name__ == "__main__":
             time.sleep(0.2)
 
             # Ask for status
-            send_request_status()
-            time.sleep(0.2)
+            # send_request_status()
+            # time.sleep(0.2)
+
             # print("request done")
 #             choice = input('''Select an option:
 # 0: exit program

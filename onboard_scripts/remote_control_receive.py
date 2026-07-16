@@ -10,8 +10,6 @@ import rclpy
 
 HAVE_PIXHAWK = True
 
-
-
 # Functions Parameters
 INPUT_PORT=None  # Serial port to be selected by the user
 INPUT_BAUDRATE=None  # Baud rate for the serial communication
@@ -120,6 +118,40 @@ def get_latest_sensor_readings():
     }
 
 
+def build_status_payload(sensor_readings):
+    sensor_bytes = []
+    for value in sensor_readings.get("ina4230", {}).values():
+        sensor_raw = int(round(value or 0))
+        sensor_bytes.extend([(sensor_raw >> 8) & 0xFF, sensor_raw & 0xFF])
+
+    humidity_raw = int(round(sensor_readings.get("humidity") or 0))
+    temperature_raw = int(round(sensor_readings.get("temperature") or 0))
+    humidity_bytes = [(humidity_raw >> 8) & 0xFF, humidity_raw & 0xFF]
+    temperature_bytes = [(temperature_raw >> 8) & 0xFF, temperature_raw & 0xFF]
+
+    discharge_current_raw = int(round((sensor_readings.get("discharge_current") or 0) * 1000.0))
+    module_voltage_raw = int(round((sensor_readings.get("module_voltage") or 0) * 100.0))
+    percentage_raw = int(round((sensor_readings.get("percentage") or 0) * 10.0))
+
+    discharge_current_bytes = [(discharge_current_raw >> 8) & 0xFF, discharge_current_raw & 0xFF]
+    voltage_bytes = [(module_voltage_raw >> 8) & 0xFF, module_voltage_raw & 0xFF]
+    percentage_bytes = [(percentage_raw >> 8) & 0xFF, percentage_raw & 0xFF]
+
+    payload = [
+        MESSAGE_ID,
+        ID,
+        int(current_mode),
+        int(current_mode_status),
+        *sensor_bytes,
+        *humidity_bytes,
+        *temperature_bytes,
+        *discharge_current_bytes,
+        *voltage_bytes,
+        *percentage_bytes,
+    ]
+    return bytes(payload)
+
+
 def mark_command_received():
     global last_command_time, command_link_active
 
@@ -207,6 +239,7 @@ def command_handler_thread_func():
         match command_type:
             case rc_utils.COMMANDS.REQUEST_STATUS:
                 print("Got request status")
+                
                 onoff = int.from_bytes(next_command[2:3], byteorder='little')
 
                 # Sensor readings (latest raw values from the ROS2 subscriber)
@@ -227,20 +260,29 @@ def command_handler_thread_func():
                 humidity_bytes = [(humidity_raw >> 8) & 0xFF, humidity_raw & 0xFF]
                 temperature_bytes = [(temperature_raw >> 8) & 0xFF, temperature_raw & 0xFF]
 
-                payload = [
-                    MESSAGE_ID,
-                    ID,
-                    int(current_mode),
-                    int(current_mode_status),
-                    *sensor_bytes,
-                    *humidity_bytes,
-                    *temperature_bytes,
-                ]
-                byte_data = bytes(payload)
+                byte_data = build_status_payload(sensor_readings)
                 response = rc_utils.send_bytes(ser, byte_data, read_response=False)
                 
             case rc_utils.COMMANDS.MANUAL_CONTROL:
                 print("Got manual control")
+
+                onoff = int.from_bytes(next_command[2:3], byteorder='little')
+
+                # Sensor readings (latest raw values from the ROS2 subscriber)
+                sensor_readings = get_latest_sensor_readings()
+                # print(readings["ina4230"])
+                # print(readings["humidity"])
+                # print(readings["temperature"])
+                print(f"[{time.time()}]Sensors: INA4230={sensor_readings['ina4230']} Humidity={sensor_readings['humidity']} Temperature={sensor_readings['temperature']}")
+                print(f"[{time.time()}]discharge current={sensor_readings['discharge_current']}, module_voltage={sensor_readings['module_voltage']}, percentage={sensor_readings['percentage']}")
+
+                sensor_bytes = []
+                for value in sensor_readings["ina4230"].values():
+                    sensor_raw = int(round(value or 0))
+                    sensor_bytes.extend([(sensor_raw >> 8) & 0xFF, sensor_raw & 0xFF])
+
+                byte_data = build_status_payload(sensor_readings)
+                response = rc_utils.send_bytes(ser, byte_data, read_response=False)
 
                 # Parse the reading
                 steering_left = next_command[2:3]  # LX
@@ -251,10 +293,12 @@ def command_handler_thread_func():
                 brush_dir = next_command[6:7]
                 brush_speed = next_command[7:8]
                 light_pct = next_command[8:9]
+                onoff = next_command[9:10]
 
                 print(f"[{time.time()}]Steering Left: {steering_left.hex()}\nThrottle Left: {throttle_left.hex()}\nSteering Right: {steering_right.hex()}\nThrottle Right: {throttle_right.hex()}\n-EOF")
                 print(f"[{time.time()}]Brush Dir: {brush_dir}, {brush_speed}")
                 print(f"[{time.time()}]Light: {light_pct}")
+                print(f"[{time.time()}]onoff: {onoff}")
 
                 if onoff:
                     if not mav_controller.is_armed:
