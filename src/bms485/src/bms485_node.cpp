@@ -323,7 +323,7 @@ private:
         bat.voltage    = data.module_voltage;
         // current: positive = charging, negative = discharging (ROS convention)
         bat.current    = data.charge_current - data.discharge_current;  //mAh
-        bat.charge     = data.total_capacity
+        bat.charge     = data.total_capacity;
         bat.percentage = data.soc;
         bat.present    = data.module_valid;
         bat.power_supply_status =
