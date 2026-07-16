@@ -162,6 +162,7 @@ def disable_mavlink_output():
     mav_controller.set_servo(BRUSH_RIGHT_CHANNEL, BRUSHED_PWM_CENTER)
     mav_controller.rc_channels_override_send(THROTTLE_PWM_CENTER, THROTTLE_PWM_CENTER)
 
+    light_utils.mode_duty(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], 0)
 
 def map_brush_pwm(brush_dir, brush_speed, side):
     brush_dir_raw = int.from_bytes(brush_dir, byteorder='little')
@@ -402,12 +403,6 @@ if __name__ == "__main__":
                 update_command_watchdog()
                 continue
 
-            # Only manual-control frames should refresh the heartbeat/watchdog.
-            if command_type == rc_utils.COMMANDS.MANUAL_CONTROL:
-                mark_manual_control_received()
-            else:
-                mark_command_received()
-
             # Really received new command
             # print("[Lora] Received new command")
             # print(received_data)
@@ -418,6 +413,12 @@ if __name__ == "__main__":
             # print(f"id: {id}")
             # print(f"command type: {command_type}, {rc_utils.get_command_type(command_type).name}")
 
+            # Only manual-control frames should refresh the heartbeat/watchdog.
+            if command_type == rc_utils.COMMANDS.MANUAL_CONTROL:
+                mark_manual_control_received()
+            else:
+                mark_command_received()
+
             # Added to command queue
             command_queue.put(received_data)
     except KeyboardInterrupt:
@@ -427,8 +428,10 @@ if __name__ == "__main__":
         if command_handler_thread is not None:
             command_handler_thread.join(timeout=1)
         ser.close()  # Close connection before exiting
-        light_utils.mode_freq(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], PWM_PIN_MAP[UVC_LIGHT_PIN][1], UVC_LIGHT_FREQ)
-        light_utils.mode_duty(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], 0)
+
+        disable_mavlink_output()
+        # light_utils.mode_freq(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], PWM_PIN_MAP[UVC_LIGHT_PIN][1], UVC_LIGHT_FREQ)
+        # light_utils.mode_duty(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], 0)
         if sensor_subscriber is not None:
             sensor_subscriber.destroy_node()
             if rclpy.ok():
