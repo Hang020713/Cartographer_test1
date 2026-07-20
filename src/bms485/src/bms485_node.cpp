@@ -1,7 +1,6 @@
 /* bms485_node.cpp - ROS 2 wrapper around the RS485 BMS poller.
  *
  * Publishes:
- *   ~/bms_status   (bms485_ros2/msg/BmsStatus)
  *   ~/battery      (sensor_msgs/msg/BatteryState)
  *
  * Parameters:
@@ -31,7 +30,6 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/battery_state.hpp"
-#include "bms485_ros2/msg/bms_status.hpp"
 
 using namespace std::chrono_literals;
 
@@ -141,8 +139,7 @@ public:
         resp_timeout_ms_ = declare_parameter<int>("resp_timeout_ms", 500);
         frame_id_        = declare_parameter<std::string>("frame_id", "bms");
 
-        // ----- Publishers -----
-        status_pub_  = create_publisher<bms485_ros2::msg::BmsStatus>("~/bms_status", 10);
+        // ----- Publisher -----
         battery_pub_ = create_publisher<sensor_msgs::msg::BatteryState>("~/battery", 10);
 
         // ----- Open serial -----
@@ -303,19 +300,6 @@ private:
     {
         auto stamp = now();
 
-        // Custom message
-        bms485_ros2::msg::BmsStatus msg;
-        msg.header.stamp = stamp;
-        msg.header.frame_id = frame_id_;
-        msg.cell_voltages     = data.cell_voltages;
-        msg.cell_temperatures = data.cell_temps;
-        msg.charge_current    = data.charge_current;
-        msg.discharge_current = data.discharge_current;
-        msg.module_voltage    = data.module_voltage;
-        msg.soc               = data.soc;
-        msg.total_capacity    = data.total_capacity;
-        status_pub_->publish(msg);
-
         // Standard BatteryState
         sensor_msgs::msg::BatteryState bat;
         bat.header.stamp = stamp;
@@ -438,7 +422,6 @@ private:
     std::thread       worker_;
     std::atomic<bool> running_{false};
 
-    rclcpp::Publisher<bms485_ros2::msg::BmsStatus>::SharedPtr      status_pub_;
     rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr   battery_pub_;
 };
 
