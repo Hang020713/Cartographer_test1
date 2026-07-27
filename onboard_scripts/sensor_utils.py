@@ -20,6 +20,9 @@ SHT3X_TEMPERATURE_TOPIC = "/sht3x_node/temperature/raw"
 # BMS485
 BMS485_TOPIC = "/bms485_node/battery"
 
+# Level Transmitter
+LEVEL_TRANSMITTER_TOPIC = "/level_transmitter_node/level"
+
 class SensorSubscriber(Node):
 
     def __init__(self):
@@ -28,14 +31,8 @@ class SensorSubscriber(Node):
         # Keep references so subscriptions aren't garbage collected
         self.subscriptions_list = []
 
-        # Store the latest values for access from outside the callbacks
+        # INA4230 current/power monitor channels
         self.latest_ina4230_values = {}
-        self.latest_humidity = None
-        self.latest_temperature = None
-
-        self.latest_discharge_current = None
-        self.latest_module_voltage = None
-        self.latest_percentage = None
 
         # INA4230 channels
         for topic in INA4230_TOPIC:
@@ -55,6 +52,10 @@ class SensorSubscriber(Node):
                 self.humidity_callback,
                 10))
 
+        # SHT3X temperature/humidity sensor
+        self.latest_humidity = None
+        self.latest_temperature = None
+
         # SHT3X temperature
         self.subscriptions_list.append(
             self.create_subscription(
@@ -63,7 +64,7 @@ class SensorSubscriber(Node):
                 SHT3X_TEMPERATURE_TOPIC,
                 self.temperature_callback,
                 10))
-        
+
         # BMS485
         self.subscriptions_list.append(
             self.create_subscription(
@@ -71,6 +72,21 @@ class SensorSubscriber(Node):
                 BMS485_TOPIC,
                 self.bms485_callback,
                 10))
+        # Battery
+        self.latest_discharge_current = None
+        self.latest_module_voltage = None
+        self.latest_percentage = None
+        
+        # Level Transmitter
+        self.subscriptions_list.append(
+            self.create_subscription(
+                Float64,
+                LEVEL_TRANSMITTER_TOPIC,
+                self.level_callback,
+                10))
+
+        # Level Transmitter
+        self.latest_water_level = None
 
     def ina4230_callback(self, topic, msg):
         self.latest_ina4230_values[topic] = msg.data
@@ -88,6 +104,10 @@ class SensorSubscriber(Node):
         self.latest_discharge_current = -msg.current
         self.latest_module_voltage = msg.voltage
         self.latest_percentage = msg.percentage
+
+    def level_callback(self, msg):
+        self.latest_water_level = msg.data
+        # self.get_logger().info('Water Level: %f' % msg.data)
 
 def main(args=None):
     rclpy.init(args=args)
