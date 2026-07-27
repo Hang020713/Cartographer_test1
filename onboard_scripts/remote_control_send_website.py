@@ -484,30 +484,13 @@ def receive_lora_response():
 def map_joystick_value(x):
     return int(max(0, min(255, (128 / 49) * x + 127 - (128 / 49) * 53)))
 
-def read_frame_2(ser):
-    # Look for start byte (Message ID byte)
-    while True:
-            b = ser.read(2)
-            if not b:                     # timeout, nothing available
-                return
-            if b[0] == 0x0a and b[1] == 0x0d:
-                break
-
-    # print(frame)
-    frame = ser.read(20)
-    if len(frame) < (20):        # incomplete -> resync next loop
-        return None
-
-    return frame
-
 def read_joystick():
     global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff
 
     if input_ser.in_waiting > 0:
-        # received_data = input_ser.read(JOYSTICK_BIT_LEN)
-        # Look for start byte (Message ID byte)
-        received_data = b"\x0a" + b"\x0d" + read_frame_2(input_ser)
-        # print(f"Received data: {received_data.hex()}\n-EOF")
+        received_data = rc_utils.read_frame(input_ser, b"\x0a\x0d", JOYSTICK_BIT_LEN, include_start_bytes=True)
+        if received_data is None:
+            return
 
         # Parse joystick input - CONVERT BYTES TO INT
         left_joystick_x = received_data[LX_BIT]

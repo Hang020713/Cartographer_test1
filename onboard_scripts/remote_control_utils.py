@@ -86,20 +86,45 @@ def percent_to_pwm(
         return int(round(pwm_center + (pct / 100.0) * (pwm_center - pwm_min)))
     return int(round(pwm_center + (pct / 100.0) * (pwm_max - pwm_center)))
 
-def read_frame(ser, start_byte, payload_length):
-    # Look for start byte (Message ID byte)
-    while True:
-        b = ser.read(1)
-        if not b:                     # timeout, nothing available
-            return None
-        if b[0] == start_byte:
-            break
+def read_frame(ser, start_bytes, payload_length, include_start_bytes=False):
+    """
+    Read a framed message from a serial port.
 
-    # Read the fixed-length payload
-    frame = ser.read(payload_length - 1)
-    # print(frame)
-    if len(frame) < (payload_length - 1):        # incomplete -> resync next loop
+    start_bytes can be a single byte integer or a bytes-like sequence.
+    If include_start_bytes is True, the returned frame includes the matched
+    start bytes; otherwise only the payload bytes are returned.
+    """
+    if isinstance(start_bytes, int):
+        start_bytes = bytes([start_bytes])
+    else:
+        start_bytes = bytes(start_bytes)
+
+    if not start_bytes:
         return None
+
+    match_index = 0
+    while True:
+        byte = ser.read(1)
+        if not byte:
+            return None
+
+        if byte[0] == start_bytes[match_index]:
+            match_index += 1
+            if match_index == len(start_bytes):
+                break
+        else:
+            if byte[0] == start_bytes[0]:
+                match_index = 1
+            else:
+                match_index = 0
+
+    expected_payload_len = payload_length - len(start_bytes)
+    frame = ser.read(expected_payload_len)
+    if len(frame) < expected_payload_len:
+        return None
+
+    if include_start_bytes:
+        return start_bytes + frame
 
     return frame
 
