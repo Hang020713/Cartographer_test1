@@ -38,6 +38,7 @@ GPIO_EN=1
 OVERLAY_EN=1
 MAVLINK_ROUTE_EN=1
 PWM_EN=1
+WS2_EN=1
 
 # sudo ls -l first to get permission
 echo "${PASSWORD}" | sudo ls -l 
@@ -451,6 +452,18 @@ if [ -n "${MAVLINK_ROUTE_EN+x}" ]; then
     sudo cp ~/${WORKSPACE_NAME}/main.conf /etc/mavlink-router/main.conf
 
     log "Mavlink router done."
+fi
+
+# Lai's Workshop build
+if [ -n "${WS2_EN+x}" ]; then
+    cd ~/${WORKSPACE_NAME}/sensor_monitor_node
+    colcon build --symlink-install
+    log "Sensor monitor node built successfully."
+
+    source install/setup.bash
+    log "Sensor monitor node sourced."
+
+    log "Dependencies for sensor monitor node installed."
 fi
 
 
