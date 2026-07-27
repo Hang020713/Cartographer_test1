@@ -32,12 +32,11 @@ LX_BIT = 2
 LY_BIT = 4
 RX_BIT = 8
 RY_BIT = 6
-BUTTON_BIT = 18
+BUTTON_BIT1 = 18
+BUTTON_BIT2 = 19
 BRUSH_SPEED_BIT = 10
 LIGHT_BIT = 12
 ONOFF_BIT = 19
-CLIENT_BIT = 5
-BRUSH_DIR_BIT = 7
 
 # Payload parameter
 MESSAGE_ID = 0xAA
@@ -557,7 +556,8 @@ def read_joystick():
         left_joystick_y = received_data[LY_BIT]
         right_joystick_x = received_data[RX_BIT]
         right_joystick_y = received_data[RY_BIT]
-        button_data = received_data[BUTTON_BIT]
+        button_data1 = received_data[BUTTON_BIT1]
+        button_data2 = received_data[BUTTON_BIT2]
         brush_speed = received_data[BRUSH_SPEED_BIT]
         light_pct = received_data[LIGHT_BIT]
         onoff = received_data[ONOFF_BIT]
@@ -571,14 +571,14 @@ def read_joystick():
             mapped_right_y = map_joystick_value(right_joystick_y)
 
             # brush
-            mapped_brush_dir = button_data & 3    # Only last 2 bits
+            mapped_brush_dir = button_data1 & 3    # Only last 2 bits
             mapped_brush_speed = 100 if brush_speed > 100 else brush_speed
             mapped_light_pct = 100 if light_pct > 100 else light_pct
 
-            mapped_onoff = onoff
+            mapped_onoff = (button_data2 >> 2) & 1
 
             # 00001000 and 00000100
-            mapped_client = (button_data >> 2) & 1
+            mapped_client = (button_data1 >> 2) & 1
 
         update_latest_joystick_status()
 
