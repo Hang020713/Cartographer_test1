@@ -117,7 +117,6 @@ def get_latest_sensor_readings():
         "percentage": sensor_subscriber.latest_percentage,
     }
 
-
 def build_status_payload(sensor_readings):
     sensor_bytes = []
     for value in sensor_readings.get("ina4230", {}).values():
@@ -260,6 +259,8 @@ def command_handler_thread_func():
                 humidity_bytes = [(humidity_raw >> 8) & 0xFF, humidity_raw & 0xFF]
                 temperature_bytes = [(temperature_raw >> 8) & 0xFF, temperature_raw & 0xFF]
 
+
+                # Send status
                 byte_data = build_status_payload(sensor_readings)
                 response = rc_utils.send_bytes(ser, byte_data, read_response=False)
                 
@@ -312,7 +313,6 @@ def command_handler_thread_func():
                 last_onoff = onoff
                     
         time.sleep(0.01)
-
 
 def update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct):
     global UVC_LIGHT_LAST_DUTY
