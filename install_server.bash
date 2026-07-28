@@ -218,7 +218,7 @@ if [ -n "${ROS2_EN+x}" ]; then
         python3-catkin-pkg \
         python3-rosdep \
         python3-lark
-    pip3 install colcon-common-extensions vcstool catkin-pkg rosdep lark numpy
+    pip3 install colcon-common-extensions vcstool catkin-pkg rosdep lark numpy pyserial
     log "ROS2 build tools installed."
 
     # Initialize rosdep
@@ -289,6 +289,8 @@ if [ -n "${CARTO_EN+x}" ]; then
     set +u
     source install/setup.bash
     set -u
+
+    echo "source ~/${WORKSPACE_NAME}/install/setup.bash" >> ~/.bashrc
 fi
 
 # -------------------------------------------------------------------
@@ -462,6 +464,7 @@ if [ -n "${WS2_EN+x}" ]; then
 
     source install/setup.bash
     log "Sensor monitor node sourced."
+    echo "source ~/${WORKSPACE_NAME}/sensor_monitor_node/install/setup.bash" >> ~/.bashrc
 
     log "Dependencies for sensor monitor node installed."
 fi
