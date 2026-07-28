@@ -112,6 +112,10 @@ def write_slave_id(ser: serial.Serial, current_id: int, new_id: int) -> bool:
     """
     Write a new slave address to register 0x0000.
     Returns True on success.
+
+    Note: The protocol doc says the device replies using the OLD address,
+    but some units reply using the NEW address (they switch before answering).
+    We therefore accept a reply from either address.
     """
     addr_reg = 0x0000
     req = build_write_request(current_id, addr_reg, new_id)
@@ -119,7 +123,6 @@ def write_slave_id(ser: serial.Serial, current_id: int, new_id: int) -> bool:
     ser.write(req)
     print(f"  TX [{len(req)}]: {hex_str(req)}")
 
-    # Wait for response (response = 8 bytes, same as request)
     time.sleep(0.05)
     resp = ser.read(8)
     print(f"  RX [{len(resp)}]: {hex_str(resp)}")
@@ -128,11 +131,22 @@ def write_slave_id(ser: serial.Serial, current_id: int, new_id: int) -> bool:
         print(f"  ERROR: Short response ({len(resp)} bytes, expected 8)")
         return False
 
-    if resp[0] != current_id:
-        print(f"  ERROR: Slave ID mismatch (expected {current_id}, got {resp[0]})")
+    # Accept a reply from EITHER the old or the new address
+    if resp[0] not in (current_id, new_id):
+        print(f"  ERROR: Slave ID mismatch (expected {current_id} or {new_id}, got {resp[0]})")
         return False
 
-    # Echo: byte[0]=id, byte[1]=0x06, byte[2:4]=addr, byte[4:6]=value, byte[6:8]=CRC
+    if resp[1] & 0x80:
+        print(f"  ERROR: Modbus exception (code {resp[2]})")
+        return False
+
+    # Validate CRC (this is the real integrity check)
+    crc_received = resp[6] | (resp[7] << 8)
+    crc_calc = modbus_crc16(resp[:6])
+    if crc_received != crc_calc:
+        print(f"  ERROR: CRC mismatch (received 0x{crc_received:04X}, calculated 0x{crc_calc:04X})")
+        return False
+
     reg_echo = (resp[2] << 8) | resp[3]
     val_echo = (resp[4] << 8) | resp[5]
 
@@ -144,7 +158,8 @@ def write_slave_id(ser: serial.Serial, current_id: int, new_id: int) -> bool:
         print(f"  ERROR: Value echo mismatch (expected {new_id}, got {val_echo})")
         return False
 
-    print(f"  OK: Slave ID changed from {current_id} to {new_id}")
+    print(f"  OK: Slave ID changed from {current_id} to {new_id} "
+          f"(device replied as slave {resp[0]})")
     return True
 
 
