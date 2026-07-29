@@ -219,7 +219,7 @@ if [ -n "${ROS2_EN+x}" ]; then
         python3-catkin-pkg \
         python3-rosdep \
         python3-lark
-    /home/master/.venv/bin/pip3 install colcon-common-extensions vcstool catkin-pkg rosdep lark numpy pyserial ply pyyaml jinja2 gpiozero lgpio
+    /home/master/.venv/bin/pip3 install colcon-common-extensions vcstool catkin-pkg rosdep lark numpy pyserial ply pyyaml jinja2 gpiozero lgpio pymavlink
     log "ROS2 build tools installed."
 
     # Initialize rosdep
@@ -459,6 +459,7 @@ fi
 if [ -n "${WS2_EN+x}" ]; then
     cd ~/${WORKSPACE_NAME}/sensor_monitor_node
 
+    colcon build --symlink-install
     log "Sensor monitor node built successfully."
 
     source install/setup.bash
