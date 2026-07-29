@@ -99,10 +99,6 @@ enable_apt_services() {
 # -------------------------------------------------------------------
 log "Starting installation process..."
 
-# Replace the ubuntu source
-sudo rm /etc/apt/sources.list.d/ubuntu.sources
-sudo cp ~/${WORKSPACE_NAME}/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources
-
 # Stop background apt services to prevent lock contention
 disable_apt_services
 
