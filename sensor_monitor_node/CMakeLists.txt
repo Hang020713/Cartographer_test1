@@ -10,7 +10,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(launch_ros REQUIRED)
+#find_package(launch_ros REQUIRED)
 
 add_executable(sht3x_node src/sht3x_node.cpp)
 ament_target_dependencies(sht3x_node rclcpp sensor_msgs)

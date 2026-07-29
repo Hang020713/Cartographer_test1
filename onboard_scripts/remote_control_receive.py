@@ -31,7 +31,7 @@ SERVO_RIGHT_CHANNEL=5
 STEERING_RAW_MIN = 0
 STEERING_RAW_MAX = 255
 STEERING_RAW_CENTER = 127
-STEERING_PWM_MIN = 500 
+STEERING_PWM_MIN = 500
 STEERING_PWM_MAX = 2500
 STEERING_PWM_CENTER = 1500
 
@@ -229,16 +229,16 @@ def command_handler_thread_func():
             next_command = command_queue.get(timeout=0.1)
         except queue.Empty:
             continue
-        
+
         print(f"[{time.time()}][Command Handler] Parse next command: {next_command}")
         id = next_command[0:1]
         command_type = rc_utils.get_command_type(next_command[1:2])
-        
+
         # Parse command type
         match command_type:
             case rc_utils.COMMANDS.REQUEST_STATUS:
                 print("Got request status")
-                
+
                 onoff = int.from_bytes(next_command[2:3], byteorder='little')
 
                 # Sensor readings (latest raw values from the ROS2 subscriber)
@@ -263,7 +263,7 @@ def command_handler_thread_func():
                 # Send status
                 byte_data = build_status_payload(sensor_readings)
                 response = rc_utils.send_bytes(ser, byte_data, read_response=False)
-                
+
             case rc_utils.COMMANDS.MANUAL_CONTROL:
                 print("Got manual control")
 
@@ -304,14 +304,14 @@ def command_handler_thread_func():
                 if onoff:
                     if not mav_controller.is_armed:
                         print("Arming the vehicle...")
-                        mav_controller.arm()    
+                        mav_controller.arm()
 
                     update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct)
                 else:
                     if not (onoff == last_onoff):
                         disable_mavlink_output()
                 last_onoff = onoff
-                    
+
         time.sleep(0.01)
 
 def update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct):
@@ -407,7 +407,7 @@ if __name__ == "__main__":
     # if ser is None:
     #     raise SystemExit(1)
     ser = rc_utils.init_serial_connection('/dev/ttyAMA1', 4800)
-    
+
     # Configure the device
     response = rc_utils.send_config_command(ser, end_char=END_CHAR)
     print(f"Response: {response}\n-EOF")
@@ -423,7 +423,7 @@ if __name__ == "__main__":
         print("Initializing MavController...")
         mav_controller = MavController(port=MAVLINK_SERIAL_PORT, baud=MAVLINK_SERIAL_BAUD)
         mav_master = mav_controller.get_master()
-        
+
         while not mav_controller.is_connected:
             print("Waiting for connection...")
             time.sleep(1)
@@ -441,7 +441,7 @@ if __name__ == "__main__":
 
     # Init sensor subscriber
     start_sensor_subscriber()
-    
+
     # Init threads
     program_stop_event.clear()
     if command_handler_thread is None or not command_handler_thread.is_alive():

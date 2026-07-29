@@ -1,5 +1,5 @@
 [Unit]
-Description=run ros2 node           
+Description=run ros2 node
 After=network.target mavlink-router.service run_ros.service
 Requires=mavlink-router.service run_ros.service
 BindsTo=mavlink-router.service run_ros.service
@@ -10,12 +10,11 @@ Environment=ROS_HOME=/home/master/.ros
 Environment=ROS_LOG_DIR=/home/master/.ros/log
 Type=simple
 #User=master
-ExecStart=/home/master/remote_control.sh
+ExecStart=/home/master/run_remote_receive.sh
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=5
 KillMode=mixed
-
 
 [Install]
 WantedBy=multi-user.target

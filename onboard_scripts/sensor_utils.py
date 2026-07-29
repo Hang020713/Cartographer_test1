@@ -75,6 +75,7 @@ class SensorSubscriber(Node):
                 BMS485_TOPIC,
                 self.bms485_callback,
                 10))
+
         # Battery
         self.latest_discharge_current = None
         self.latest_discharge_current_timestamp = None
@@ -82,7 +83,7 @@ class SensorSubscriber(Node):
         self.latest_module_voltage_timestamp = None
         self.latest_percentage = None
         self.latest_percentage_timestamp = None
-        
+
         # Level Transmitter
         self.subscriptions_list.append(
             self.create_subscription(
