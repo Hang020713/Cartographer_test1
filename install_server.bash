@@ -453,6 +453,9 @@ if [ -n "${MAVLINK_ROUTE_EN+x}" ]; then
     sudo mkdir -p /etc/mavlink-router
     sudo cp ~/${WORKSPACE_NAME}/main.conf /etc/mavlink-router/main.conf
 
+    sudo systemctl enable mavlink-routerd.service
+    sudo systemctl restart mavlink-routerd.service
+
     log "Mavlink router done."
 fi
 
@@ -482,7 +485,6 @@ if [ -n "${SERVICE_EN+x}" ]; then
     sudo chmod +x ~/run_boat_control_web.sh ~/run_remote_receive.sh ~/run_sensor_ros_node.sh
 
     sudo systemctl daemon-reload
-
 
     sudo cp ~/${WORKSPACE_NAME}/sgw-config ~/sgw-config
     echo "source ~/sgw-config" >> ~/.bashrc
