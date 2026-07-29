@@ -1,11 +1,11 @@
 [Unit]
-Description=run ros2 node           
+Description=run ros2 node
 After=network.target
 
 [Service]
 Type=simple
 User=master
-ExecStart=/home/master/run_ros2_node.sh
+ExecStart=/home/master/run_sensor_ros_node.sh
 Restart=on-failure
 RestartSec=5
 

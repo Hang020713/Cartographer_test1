@@ -8,6 +8,7 @@ The `sensor_monitor` ROS 2 package for reading data from INA4230 current sensors
 - [Workspace Setup & Build](#workspace-setup--build)
 - [I2C Device Configuration](#i2c-device-configuration)
 - [Running the Nodes](#running-the-nodes)
+- [BMS485 Node](#bms485-node)
 - [Parameters](#parameters)
 - [Topics](#topics)
 - [Troubleshooting](#troubleshooting)
@@ -185,11 +186,59 @@ Example output:
 [INFO] [ina4230_node]: INA4230 node startup successful; reading 3 sensor devices...
 ```
 
+### Start the BMS485 Battery Monitor Node
+
+```bash
+ros2 run sensor_monitor bms485_node
+# or
+ros2 run sensor_monitor bms485_node --ros-args --log-level debug
+```
+
+The BMS485 node polls a battery management system over an RS485 serial interface and publishes a standard battery state message.
+
 ### Run Both Nodes Concurrently
 
 ```bash
 ros2 run sensor_monitor sht3x_node &
-ros2 run sensor_monitor ina4230_node
+ros2 run sensor_monitor ina4230_node &
+ros2 run sensor_monitor bms485_node
+```
+
+## BMS485 Node
+
+The BMS485 node uses Modbus-style queries to read battery cell voltages, temperatures, charge/discharge current, module voltage, state of charge, and total capacity from an RS485-connected BMS.
+
+### Parameters
+
+| Parameter         | Type   | Default              | Description                                    |
+| ----------------- | ------ | -------------------- | ---------------------------------------------- |
+| `serial_port`     | string | `/dev/ttyAMA3`       | RS485 serial device path                       |
+| `slave_id`        | int    | `1`                  | BMS slave ID (must be `1` to `16`)             |
+| `poll_period`     | double | `1.0`                | Time between poll cycles (seconds)             |
+| `error_period`    | double | `2.0`                | Delay after a failed poll cycle (seconds)      |
+| `resp_timeout_ms` | int    | `500`                | Response timeout for each Modbus request       |
+| `frame_id`        | string | `bms`                | Frame ID used in the published message header  |
+
+Override parameters at runtime:
+
+```bash
+ros2 run sensor_monitor bms485_node --ros-args \
+  -p serial_port:=/dev/ttyUSB0 \
+  -p slave_id:=2 \
+  -p poll_period:=0.5 \
+  -p resp_timeout_ms:=1000
+```
+
+### Topics
+
+| Topic          | Type                                   | Description                                 |
+| ------------- | -------------------------------------- | ------------------------------------------- |
+| `~/battery`   | `sensor_msgs/msg/BatteryState`         | Aggregated battery state from the BMS       |
+
+Monitor the battery topic:
+
+```bash
+ros2 topic echo /bms485_node/battery
 ```
 
 ## Parameters

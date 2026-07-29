@@ -5,6 +5,13 @@ import copy
 from enum import IntEnum
 from flask import Flask, jsonify, render_template_string
 
+try:
+    import rclpy
+    import sensor_utils
+except Exception:
+    rclpy = None
+    sensor_utils = None
+
 # Debug parameter
 HAVE_JOYSTICK=True
 DEBUG_JOYSTICK=False
@@ -25,7 +32,8 @@ LX_BIT = 2
 LY_BIT = 4
 RX_BIT = 8
 RY_BIT = 6
-BRUSH_DIR_BIT = 18
+BUTTON_BIT1 = 18
+BUTTON_BIT2 = 19
 BRUSH_SPEED_BIT = 10
 LIGHT_BIT = 12
 ONOFF_BIT = 19
@@ -43,6 +51,7 @@ mapped_brush_dir = 0   # 0: idle, 1: rotate up, 2: rotate down
 mapped_brush_speed = 0 # 0 - 100
 mapped_light_pct = 0
 mapped_onoff = 0
+mapped_client = 0
 
 # Threads
 program_stop_event = threading.Event()
@@ -50,6 +59,8 @@ joystick_lock = threading.Lock()
 read_joystick_thread = None
 receive_lora_thread = None
 web_thread = None                       # NEW
+sensor_subscriber = None
+sensor_subscriber_thread = None
 
 # Lora received parameters
 CURRENT_LSB = 0.001
@@ -69,6 +80,7 @@ latest_status = {
     "sensor_channels": [None, None, None, None],  # 4 motor currents (A)
     "humidity_pct": None,
     "temperature_c": None,
+    "water_level": None,
     "discharge_current_a": None,
     "module_voltage_v": None,
     "battery_percentage": None,
@@ -99,6 +111,12 @@ def update_latest_status(parsed):
                                                        [None, None, None, None])
         latest_status["humidity_pct"] = parsed.get("humidity_pct")
         latest_status["temperature_c"] = parsed.get("temperature_c")
+        water_level = parsed.get("water_level")
+        if water_level is None:
+            water_level = parsed.get("level")
+        if water_level is None:
+            water_level = parsed.get("water_level_pct")
+        latest_status["water_level"] = water_level
         latest_status["discharge_current_a"] = parsed.get("discharge_current_a")
         latest_status["module_voltage_v"] = parsed.get("module_voltage_v")
         latest_status["battery_percentage"] = parsed.get("battery_percentage")
@@ -257,6 +275,7 @@ DASHBOARD_HTML = """
             <div class="section-title">Environment</div>
             <div class="card"><span class="label">Humidity</span><span class="value"><span id="humidity">--</span><span class="unit">%</span></span></div>
             <div class="card"><span class="label">Temperature</span><span class="value"><span id="temperature">--</span><span class="unit">&deg;C</span></span></div>
+            <div class="card"><span class="label">Water Level</span><span class="value"><span id="water_level">--</span></span></div>
             <div class="card"><span class="label">Discharge Current</span><span class="value"><span id="discharge_current">--</span><span class="unit">A</span></span></div>
             <div class="card"><span class="label">Battery Voltage</span><span class="value"><span id="module_voltage">--</span><span class="unit">V</span></span></div>
             <div class="card"><span class="label">Battery %</span><span class="value"><span id="battery_percentage">--</span><span class="unit">%</span></span></div>
@@ -337,6 +356,7 @@ DASHBOARD_HTML = """
                 }
                 document.getElementById('humidity').textContent = fmt(d.humidity_pct, 1);
                 document.getElementById('temperature').textContent = fmt(d.temperature_c, 1);
+                document.getElementById('water_level').textContent = fmt(d.water_level, 2);
                 document.getElementById('discharge_current').textContent = fmt(d.discharge_current_a, 3);
                 document.getElementById('module_voltage').textContent = fmt(d.module_voltage_v, 2);
                 document.getElementById('battery_percentage').textContent = fmt(d.battery_percentage, 1);
@@ -454,6 +474,45 @@ def receive_lora_thread_func():
         receive_lora_response()
         time.sleep(0.01)
 
+
+def update_latest_sensor_status():
+    global sensor_subscriber
+
+    if rclpy is None or sensor_utils is None:
+        return
+
+    if sensor_subscriber is None:
+        try:
+            if not rclpy.ok():
+                rclpy.init(args=None)
+            sensor_subscriber = sensor_utils.SensorSubscriber()
+        except Exception:
+            return
+
+    water_level = getattr(sensor_subscriber, "latest_water_level", None)
+    if water_level is None:
+        return
+
+    with status_lock:
+        latest_status["water_level"] = water_level
+
+
+def sensor_subscriber_thread_func():
+    global sensor_subscriber
+
+    if rclpy is None or sensor_utils is None:
+        return
+
+    try:
+        if not rclpy.ok():
+            rclpy.init(args=None)
+        if sensor_subscriber is None:
+            sensor_subscriber = sensor_utils.SensorSubscriber()
+        rclpy.spin(sensor_subscriber)
+    except Exception:
+        return
+
+
 def receive_lora_response():
     # Wait for status response
     received_data = rc_utils.read_frame(send_ser, MESSAGE_ID, rc_utils.STATUS_PAYLOAD_LEN)
@@ -485,7 +544,7 @@ def map_joystick_value(x):
     return int(max(0, min(255, (128 / 49) * x + 127 - (128 / 49) * 53)))
 
 def read_joystick():
-    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff
+    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_client
 
     if input_ser.in_waiting > 0:
         received_data = rc_utils.read_frame(input_ser, b"\x0a\x0d", JOYSTICK_BIT_LEN, include_start_bytes=True)
@@ -497,7 +556,8 @@ def read_joystick():
         left_joystick_y = received_data[LY_BIT]
         right_joystick_x = received_data[RX_BIT]
         right_joystick_y = received_data[RY_BIT]
-        brush_dir = received_data[BRUSH_DIR_BIT]
+        button_data1 = received_data[BUTTON_BIT1]
+        button_data2 = received_data[BUTTON_BIT2]
         brush_speed = received_data[BRUSH_SPEED_BIT]
         light_pct = received_data[LIGHT_BIT]
         onoff = received_data[ONOFF_BIT]
@@ -511,17 +571,20 @@ def read_joystick():
             mapped_right_y = map_joystick_value(right_joystick_y)
 
             # brush
-            mapped_brush_dir = brush_dir - 128
+            mapped_brush_dir = button_data1 & 3    # Only last 2 bits
             mapped_brush_speed = 100 if brush_speed > 100 else brush_speed
             mapped_light_pct = 100 if light_pct > 100 else light_pct
 
-            mapped_onoff = onoff
+            mapped_onoff = (button_data2 >> 2) & 1
+
+            # 00001000 and 00000100
+            mapped_client = (button_data1 >> 2) & 1
 
         update_latest_joystick_status()
 
         if DEBUG_JOYSTICK:
             print(f"[{time.time()}]LX: {left_joystick_x}, LY: {left_joystick_y}, RX: {right_joystick_x}, RY: {right_joystick_y}")
-            print(f"[{time.time()}]Brush Dir: {mapped_brush_dir}({brush_dir}), speed: {mapped_brush_speed}({brush_speed})")
+            print(f"[{time.time()}]Brush Dir: {mapped_brush_dir}), speed: {mapped_brush_speed}({brush_speed})")
             print(f"[{time.time()}]Light: {mapped_light_pct}({light_pct})")
             print(f"[{time.time()}]OnOff: {mapped_onoff}")
 
@@ -614,6 +677,11 @@ if __name__ == "__main__":
             read_joystick_thread.start()
         print("Joystick reader thread started and will keep running.")
 
+    if sensor_subscriber_thread is None or not sensor_subscriber_thread.is_alive():
+        sensor_subscriber_thread = threading.Thread(target=sensor_subscriber_thread_func, daemon=True)
+        sensor_subscriber_thread.start()
+    print("Sensor subscriber thread started for dashboard updates.")
+
     # NEW: start the web dashboard thread
     if WEB_DASHBOARD:
         if web_thread is None or not web_thread.is_alive():
@@ -625,6 +693,7 @@ if __name__ == "__main__":
     # Command Logic
     try:
         while True:
+            update_latest_sensor_status()
             send_manual_control()
             time.sleep(0.2)
 

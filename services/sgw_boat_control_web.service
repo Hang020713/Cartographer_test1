@@ -5,8 +5,7 @@ After=network.target mavlink-router.service
 [Service]
 Type=simple
 User=master
-WorkingDirectory=/home/master/boat_control_web-develop
-ExecStart=/home/master/.venv/bin/streamlit run /home/master/boat_control_web-develop/app.py --server.port 8080
+ExecStart=/home/master/run_boat_control_web.sh
 Restart=always
 RestartSec=10
 

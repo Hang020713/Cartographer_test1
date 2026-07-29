@@ -12,7 +12,6 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/temperature.hpp"
 #include "sensor_msgs/msg/relative_humidity.hpp"
-#include "std_msgs/msg/float64.hpp"
 
 using namespace std::chrono_literals;
 
@@ -78,9 +77,7 @@ public:
 
         // ── Publishers ──
         temp_pub_ = this->create_publisher<sensor_msgs::msg::Temperature>("~/temperature", 10);
-        temp_raw_pub_ = this->create_publisher<std_msgs::msg::Float64>("~/temperature/raw", 10);
         hum_pub_ = this->create_publisher<sensor_msgs::msg::RelativeHumidity>("~/humidity", 10);
-        hum_raw_pub_ = this->create_publisher<std_msgs::msg::Float64>("~/humidity/raw", 10);
 
         // ── Timer ──
         timer_ = this->create_wall_timer(kTimerPeriod, std::bind(&SHT3xNode::timer_callback, this));
@@ -155,18 +152,10 @@ private:
         hum_msg.relative_humidity = humidity / 100.0;
         hum_msg.variance = 0.0004;
 
-        auto temp_raw_msg = std::make_unique<std_msgs::msg::Float64>();
-        temp_raw_msg->data = static_cast<double>(raw_temp);
-        temp_raw_pub_->publish(std::move(temp_raw_msg));
-
-        auto hum_raw_msg = std::make_unique<std_msgs::msg::Float64>();
-        hum_raw_msg->data = static_cast<double>(raw_hum);
-        hum_raw_pub_->publish(std::move(hum_raw_msg));
-
         temp_pub_->publish(temp_msg);
         hum_pub_->publish(hum_msg);
 
-        RCLCPP_INFO(this->get_logger(), "Published -> Temp: %.2f °C, Hum: %.2f %% (raw: %u, %u)", temperature, humidity, raw_temp, raw_hum);
+        RCLCPP_INFO(this->get_logger(), "Published -> Temp: %.2f °C, Hum: %.2f %%", temperature, humidity);
     }
 
     // ── Member variables ───────────────────────────────────────────────
@@ -177,9 +166,7 @@ private:
     // ROS
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr temp_pub_;
-    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr temp_raw_pub_;
     rclcpp::Publisher<sensor_msgs::msg::RelativeHumidity>::SharedPtr hum_pub_;
-    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr hum_raw_pub_;
 
     // Timing
     static constexpr auto kMeasWait = 20ms;

@@ -38,9 +38,11 @@ GPIO_EN=1
 OVERLAY_EN=1
 MAVLINK_ROUTE_EN=1
 PWM_EN=1
+WS2_EN=1
+SERVICE_EN=1
 
 # sudo ls -l first to get permission
-echo "${PASSWORD}" | sudo ls -l 
+echo "${PASSWORD}" | sudo ls -l
 
 # -------------------------------------------------------------------
 # Helper functions
@@ -96,6 +98,10 @@ enable_apt_services() {
 # Start installation
 # -------------------------------------------------------------------
 log "Starting installation process..."
+
+# Replace the ubuntu source
+sudo rm /etc/apt/sources.list.d/ubuntu.sources
+sudo cp ~/${WORKSPACE_NAME}/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources
 
 # Stop background apt services to prevent lock contention
 disable_apt_services
@@ -168,12 +174,12 @@ if [ -n "${HOTSPOT_EN+x}" ]; then
       wifi.ssid ${HOTSPOT_ID} \
       ipv4.method shared \
       ipv4.addresses ${HOTSPOT_IP}/24
-    
+
     # Set WiFi password
     sudo nmcli connection modify Hotspot \
       wifi-sec.key-mgmt wpa-psk \
       wifi-sec.psk "${HOTSPOT_PASSWORD}"
-    
+
     log "Hotspot configured."
 
     # Enable the hotspot
@@ -217,7 +223,7 @@ if [ -n "${ROS2_EN+x}" ]; then
         python3-catkin-pkg \
         python3-rosdep \
         python3-lark
-    pip3 install colcon-common-extensions vcstool catkin-pkg rosdep lark numpy
+    /home/master/.venv/bin/pip3 install colcon-common-extensions vcstool catkin-pkg rosdep lark numpy pyserial ply pyyaml jinja2 gpiozero lgpio
     log "ROS2 build tools installed."
 
     # Initialize rosdep
@@ -284,10 +290,12 @@ if [ -n "${CARTO_EN+x}" ]; then
     rosdep install --from-paths src --ignore-src -r -y
     colcon build --symlink-install
     log "$WORKSPACE_NAME built successfully."
-    
+
     set +u
     source install/setup.bash
     set -u
+
+    echo "source ~/${WORKSPACE_NAME}/install/setup.bash" >> ~/.bashrc
 fi
 
 # -------------------------------------------------------------------
@@ -356,10 +364,6 @@ if [ -n "${RPICAM_EN+x}" ]; then
         qt5-qmake qtmultimedia5-dev \
         python3-yaml python3-ply python3-jinja2
 
-    pip3 install ply
-    pip3 install pyyaml
-    pip3 install jinja2
-
     # Build libcamera
     cd ~
     if [ ! -d "libcamera" ]; then
@@ -408,7 +412,6 @@ fi
 # -------------------------------------------------------------------
 if [ -n "${GPIO_EN+x}" ]; then
     apt_install gpiod libgpiod-dev python3-libgpiod python3-pip python3-gpiozero python3-lgpio
-    pip3 install gpiozero lgpio
     sudo usermod -aG dialout "$USER"
     log "GPIO tools installed."
 fi
@@ -446,13 +449,44 @@ if [ -n "${MAVLINK_ROUTE_EN+x}" ]; then
     meson setup build .
     ninja -C build
     sudo ninja -C build install
-    
+
     sudo mkdir -p /etc/mavlink-router
     sudo cp ~/${WORKSPACE_NAME}/main.conf /etc/mavlink-router/main.conf
 
     log "Mavlink router done."
 fi
 
+# Lai's Workshop build
+if [ -n "${WS2_EN+x}" ]; then
+    cd ~/${WORKSPACE_NAME}/sensor_monitor_node
+
+    log "Sensor monitor node built successfully."
+
+    source install/setup.bash
+    log "Sensor monitor node sourced."
+    echo "source ~/${WORKSPACE_NAME}/sensor_monitor_node/install/setup.bash" >> ~/.bashrc
+
+    log "Dependencies for sensor monitor node installed."
+fi
+
+# Copy service and enable
+if [ -n "${SERVICE_EN+x}" ]; then
+    sudo cp ~/${WORKSPACE_NAME}/services/sgw_boat_control_web.service /etc/systemd/system/sgw_boat_control_web.service
+    sudo cp ~/${WORKSPACE_NAME}/services/sgw_remote_python.service /etc/systemd/system/sgw_boat_control_web.service
+    sudo cp ~/${WORKSPACE_NAME}/services/sgw_sensor_ros_node.service /etc/systemd/system/sgw_boat_control_web.service
+
+    sudo cp ~/${WORKSPACE_NAME}/services/run_boat_control_web.sh ~/run_boat_control_web.sh
+    sudo cp ~/${WORKSPACE_NAME}/services/run_remote_receive.sh ~/run_remote_receive.sh
+    sudo cp ~/${WORKSPACE_NAME}/services/run_sensor_ros_node.sh ~/run_sensor_ros_node.sh
+
+    sudo chmod +x ~/run_boat_control_web.sh ~/run_remote_receive.sh ~/run_sensor_ros_node.sh
+
+    sudo systemctl daemon-reload
+
+
+    sudo cp ~/${WORKSPACE_NAME}/sgw-config ~/sgw-config
+    echo "source ~/sgw-config" >> ~/.bashrc
+fi
 
 # -------------------------------------------------------------------
 # Cleanup and finalization
