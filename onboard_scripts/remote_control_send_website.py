@@ -13,9 +13,9 @@ except Exception:
     sensor_utils = None
 
 # Debug parameter
-HAVE_JOYSTICK=True
+HAVE_JOYSTICK=False
 DEBUG_JOYSTICK=False
-WEB_DASHBOARD=True          # NEW: enable the web dashboard
+WEB_DASHBOARD=False          # NEW: enable the web dashboard
 WEB_HOST="0.0.0.0"          # NEW
 WEB_PORT=5050               # NEW
 
@@ -211,7 +211,7 @@ DASHBOARD_HTML = """
             height: 100%;
             object-fit: cover;
             transition: transform 0.3s ease;
-            
+
             /* Prevents blurriness during upscale/zoom */
             image-rendering: -moz-crisp-edges; /* Firefox */
             image-rendering: pixelated;        /* Chrome, Edge, Safari */
@@ -592,10 +592,11 @@ def send_manual_control(read_response=False):
     global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff
 
     # LX, LY, RX, RY, Brush dir, Brush speed, light
-    byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.MANUAL_CONTROL, 
+    byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.MANUAL_CONTROL,
                        mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y,
                        mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff
                     ])
+    print(f"[{time.time()}]{mapped_left_y}")
     response = rc_utils.send_bytes(send_ser, byte_data, wait_time=0.3, read_response=read_response)
     return response
 
@@ -613,7 +614,7 @@ if __name__ == "__main__":
         if INPUT_BAUDRATE is None:
             INPUT_BAUDRATE = rc_utils.select_baudrate(115200)
         print(f"Selected baudrate: {INPUT_BAUDRATE}")
-        
+
         # Select the serial port for receiving data
         if INPUT_PORT is None:
             INPUT_PORT = rc_utils.select_serial_port(INPUT_PORT)
@@ -736,7 +737,7 @@ if __name__ == "__main__":
 #                         flag = False
 
 #             elif choice == "3":
-#                 byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.REQUEST_STATUS, 
+#                 byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.REQUEST_STATUS,
 #                                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 #                                    ])
 #                 response = rc_utils.send_bytes(send_ser, byte_data, read_response=False)
