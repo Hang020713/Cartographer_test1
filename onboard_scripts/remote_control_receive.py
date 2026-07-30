@@ -300,11 +300,19 @@ def command_handler_thread_func():
                 brush_speed = next_command[7:8]
                 light_pct = next_command[8:9]
                 onoff = int.from_bytes(next_command[9:10], byteorder='little')
+                video = int.from_bytes(next_command[10:11], byteorder='little')
 
                 print(f"[{time.time()}]Steering Left: {steering_left.hex()}\nThrottle Left: {throttle_left.hex()}\nSteering Right: {steering_right.hex()}\nThrottle Right: {throttle_right.hex()}\n-EOF")
                 print(f"[{time.time()}]Brush Dir: {brush_dir}, {brush_speed}")
                 print(f"[{time.time()}]Light: {light_pct}")
                 print(f"[{time.time()}]onoff: {onoff}")
+                print(f"[{time.time()}]video: {video}")
+
+                if video:
+                    if not camera_recorder.is_running:
+                        print("Starting video recording...")
+                        camera_recorder.start_recording(0, 5)
+                        camera_recorder.start_recording(1, 5)
 
                 if onoff:
                     if not mav_controller.is_armed:

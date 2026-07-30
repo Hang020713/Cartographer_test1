@@ -52,6 +52,7 @@ mapped_brush_speed = 0 # 0 - 100
 mapped_light_pct = 0
 mapped_onoff = 0
 mapped_client = 0
+mapped_video = 0
 
 # Threads
 program_stop_event = threading.Event()
@@ -580,6 +581,8 @@ def read_joystick():
             # 00001000 and 00000100
             mapped_client = (button_data1 >> 2) & 1
 
+            mapped_video = (button_data2 >> 4) & 1
+
         update_latest_joystick_status()
 
         if DEBUG_JOYSTICK:
@@ -587,14 +590,15 @@ def read_joystick():
             print(f"[{time.time()}]Brush Dir: {mapped_brush_dir}), speed: {mapped_brush_speed}({brush_speed})")
             print(f"[{time.time()}]Light: {mapped_light_pct}({light_pct})")
             print(f"[{time.time()}]OnOff: {mapped_onoff}")
+            print(f"[{time.time()}]Client: {mapped_client}, Video: {mapped_video}")
 
 def send_manual_control(read_response=False):
-    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff
+    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_video
 
     # LX, LY, RX, RY, Brush dir, Brush speed, light
     byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.MANUAL_CONTROL,
                        mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y,
-                       mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff
+                       mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_video
                     ])
     print(f"[{time.time()}]{mapped_left_y}")
     response = rc_utils.send_bytes(send_ser, byte_data, wait_time=0.3, read_response=read_response)
