@@ -1,8 +1,8 @@
 [Unit]
 Description=run ros2 node
 After=network.target mavlink-router.service run_ros.service
-Requires=mavlink-router.service run_ros.service
-BindsTo=mavlink-router.service run_ros.service
+Requires=mavlink-router.service sgw_sensor_ros_node.service
+BindsTo=mavlink-router.service sgw_sensor_ros_node.service
 
 [Service]
 Environment=HOME=/home/master
