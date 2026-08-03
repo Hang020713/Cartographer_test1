@@ -8,7 +8,7 @@ import camera_utils
 import sensor_utils
 import rclpy
 
-HAVE_PIXHAWK = True
+HAVE_PIXHAWK = False
 CLIENT_TYPE = "MASTER"
 #CLIENT_TYPE = "SLAVE"
 
@@ -101,26 +101,19 @@ def start_sensor_subscriber():
 
     return sensor_subscriber
 
-
 def get_latest_sensor_readings():
     if sensor_subscriber is None:
         return {
             "ina4230": {},
-            "humidity": None,
-            "temperature": None,
-            "discharge_current": None,
-            "module_voltage": None,
-            "percentage": None
+            "humidity": 0.0,
+            "temperature": 0.0,
+            "discharge_current": 0.0,
+            "module_voltage": 0.0,
+            "percentage": 0.0
         }
 
-    return {
-        "ina4230": dict(sensor_subscriber.latest_ina4230_values),
-        "humidity": sensor_subscriber.latest_humidity,
-        "temperature": sensor_subscriber.latest_temperature,
-        "discharge_current": sensor_subscriber.latest_discharge_current,
-        "module_voltage": sensor_subscriber.latest_module_voltage,
-        "percentage": sensor_subscriber.latest_percentage,
-    }
+    # Use the thread-safe snapshot method with timeout checking
+    return sensor_subscriber.get_snapshot()
 
 def build_status_payload(sensor_readings):
     sensor_bytes = []
@@ -194,8 +187,9 @@ def disable_mavlink_output():
         return
 
     print("Stopping MAVLink output to protect the vehicle.")
-    # mav_controller.set_servo(SERVO_LEFT_CHANNEL, STEERING_PWM_CENTER)
-    # mav_controller.set_servo(SERVO_RIGHT_CHANNEL, STEERING_PWM_CENTER)
+    if CLIENT_TYPE == "SLAVE":
+        mav_controller.set_servo(SERVO_LEFT_CHANNEL, STEERING_PWM_CENTER)
+        mav_controller.set_servo(SERVO_RIGHT_CHANNEL, STEERING_PWM_CENTER)
     mav_controller.set_servo(BRUSH_LEFT_CHANNEL, BRUSHED_PWM_CENTER)
     mav_controller.set_servo(BRUSH_RIGHT_CHANNEL, BRUSHED_PWM_CENTER)
     mav_controller.rc_channels_override_send(THROTTLE_PWM_CENTER, THROTTLE_PWM_CENTER)
@@ -302,11 +296,11 @@ def command_handler_thread_func():
                 onoff = int.from_bytes(next_command[9:10], byteorder='little')
                 video = int.from_bytes(next_command[10:11], byteorder='little')
 
-                print(f"[{time.time()}]Steering Left: {steering_left.hex()}\nThrottle Left: {throttle_left.hex()}\nSteering Right: {steering_right.hex()}\nThrottle Right: {throttle_right.hex()}\n-EOF")
-                print(f"[{time.time()}]Brush Dir: {brush_dir}, {brush_speed}")
-                print(f"[{time.time()}]Light: {light_pct}")
-                print(f"[{time.time()}]onoff: {onoff}")
-                print(f"[{time.time()}]video: {video}")
+                # print(f"[{time.time()}]Steering Left: {steering_left.hex()}\nThrottle Left: {throttle_left.hex()}\nSteering Right: {steering_right.hex()}\nThrottle Right: {throttle_right.hex()}\n-EOF")
+                # print(f"[{time.time()}]Brush Dir: {brush_dir}, {brush_speed}")
+                # print(f"[{time.time()}]Light: {light_pct}")
+                # print(f"[{time.time()}]onoff: {onoff}")
+                # print(f"[{time.time()}]video: {video}")
 
                 if video:
                     if not camera_recorder.is_running:
@@ -394,10 +388,10 @@ def update_manual_control(steering_left, throttle_left, steering_right, throttle
             0                 # chan8
         )
 
-#        if CLIENT_TYPE == "SLAVE":
+        if CLIENT_TYPE == "SLAVE":
             # Set servo
-#            mav_controller.set_servo(SERVO_LEFT_CHANNEL, steering_left_pwm)
-#            mav_controller.set_servo(SERVO_RIGHT_CHANNEL, steering_right_pwm)
+           mav_controller.set_servo(SERVO_LEFT_CHANNEL, steering_left_pwm)
+           mav_controller.set_servo(SERVO_RIGHT_CHANNEL, steering_right_pwm)
 
         # Set Brushed
         mav_controller.set_servo(BRUSH_LEFT_CHANNEL, left_brush_pwm)
