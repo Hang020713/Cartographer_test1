@@ -8,7 +8,7 @@ import camera_utils
 import sensor_utils
 import rclpy
 
-HAVE_PIXHAWK = False
+HAVE_PIXHAWK = True
 CLIENT_TYPE = "MASTER"
 #CLIENT_TYPE = "SLAVE"
 
@@ -109,7 +109,8 @@ def get_latest_sensor_readings():
             "temperature": 0.0,
             "discharge_current": 0.0,
             "module_voltage": 0.0,
-            "percentage": 0.0
+            "percentage": 0.0,
+            "water_level": 0.0,
         }
 
     # Use the thread-safe snapshot method with timeout checking
@@ -123,8 +124,10 @@ def build_status_payload(sensor_readings):
 
     humidity_raw = int(round(sensor_readings.get("humidity") or 0))
     temperature_raw = int(round(sensor_readings.get("temperature") or 0))
+    water_level_raw = int(round((sensor_readings.get("water_level") or 0) * 100.0))
     humidity_bytes = [(humidity_raw >> 8) & 0xFF, humidity_raw & 0xFF]
     temperature_bytes = [(temperature_raw >> 8) & 0xFF, temperature_raw & 0xFF]
+    water_level_bytes = [(water_level_raw >> 8) & 0xFF, water_level_raw & 0xFF]
 
     discharge_current_raw = int(round((sensor_readings.get("discharge_current") or 0) * 1000.0))
     module_voltage_raw = int(round((sensor_readings.get("module_voltage") or 0) * 100.0))
@@ -145,6 +148,7 @@ def build_status_payload(sensor_readings):
         *discharge_current_bytes,
         *voltage_bytes,
         *percentage_bytes,
+        *water_level_bytes
     ]
     return bytes(payload)
 
@@ -247,6 +251,7 @@ def command_handler_thread_func():
                 # print(readings["temperature"])
                 print(f"[{time.time()}]Sensors: INA4230={sensor_readings['ina4230']} Humidity={sensor_readings['humidity']} Temperature={sensor_readings['temperature']}")
                 print(f"[{time.time()}]discharge current={sensor_readings['discharge_current']}, module_voltage={sensor_readings['module_voltage']}, percentage={sensor_readings['percentage']}")
+                print(f"[{time.time()}]water level: {sensor_readings["water_level"]}")
 
                 sensor_bytes = []
                 for value in sensor_readings["ina4230"].values():
@@ -275,6 +280,7 @@ def command_handler_thread_func():
                 # print(readings["temperature"])
                 print(f"[{time.time()}]Sensors: INA4230={sensor_readings['ina4230']} Humidity={sensor_readings['humidity']} Temperature={sensor_readings['temperature']}")
                 print(f"[{time.time()}]discharge current={sensor_readings['discharge_current']}, module_voltage={sensor_readings['module_voltage']}, percentage={sensor_readings['percentage']}")
+                print(f"[{time.time()}]water level: {sensor_readings["water_level"]}")
 
                 sensor_bytes = []
                 for value in sensor_readings["ina4230"].values():
@@ -469,7 +475,7 @@ if __name__ == "__main__":
     try:
         while True:
             # Receive lora thread
-            received_data = rc_utils.read_frame(ser, MESSAGE_ID, rc_utils.INQUERY_PAYLOAD_LEN)
+            received_data = rc_utils.read_frame(ser, MESSAGE_ID + ID, rc_utils.INQUERY_PAYLOAD_LEN)
             if received_data is None:
                 update_command_watchdog()
                 continue

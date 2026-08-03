@@ -15,9 +15,9 @@ except Exception:
 # Debug parameter
 HAVE_JOYSTICK=False
 DEBUG_JOYSTICK=False
-WEB_DASHBOARD=False          # NEW: enable the web dashboard
-WEB_HOST="0.0.0.0"          # NEW
-WEB_PORT=5050               # NEW
+WEB_DASHBOARD=True           # Start the web dashboard by default
+WEB_HOST="0.0.0.0"
+WEB_PORT=5050
 
 # Functions parameters
 INPUT_PORT=None
@@ -112,12 +112,7 @@ def update_latest_status(parsed):
                                                        [None, None, None, None])
         latest_status["humidity_pct"] = parsed.get("humidity_pct")
         latest_status["temperature_c"] = parsed.get("temperature_c")
-        water_level = parsed.get("water_level")
-        if water_level is None:
-            water_level = parsed.get("level")
-        if water_level is None:
-            water_level = parsed.get("water_level_pct")
-        latest_status["water_level"] = water_level
+        latest_status["water_level"] = parsed.get("water_level")
         latest_status["discharge_current_a"] = parsed.get("discharge_current_a")
         latest_status["module_voltage_v"] = parsed.get("module_voltage_v")
         latest_status["battery_percentage"] = parsed.get("battery_percentage")
@@ -276,7 +271,7 @@ DASHBOARD_HTML = """
             <div class="section-title">Environment</div>
             <div class="card"><span class="label">Humidity</span><span class="value"><span id="humidity">--</span><span class="unit">%</span></span></div>
             <div class="card"><span class="label">Temperature</span><span class="value"><span id="temperature">--</span><span class="unit">&deg;C</span></span></div>
-            <div class="card"><span class="label">Water Level</span><span class="value"><span id="water_level">--</span></span></div>
+            <div class="card"><span class="label">Water Level</span><span class="value"><span id="water_level">--</span><span class="unit">cm</span></span></div>
             <div class="card"><span class="label">Discharge Current</span><span class="value"><span id="discharge_current">--</span><span class="unit">A</span></span></div>
             <div class="card"><span class="label">Battery Voltage</span><span class="value"><span id="module_voltage">--</span><span class="unit">V</span></span></div>
             <div class="card"><span class="label">Battery %</span><span class="value"><span id="battery_percentage">--</span><span class="unit">%</span></span></div>
@@ -454,6 +449,7 @@ def parse_status_payload(raw_payload):
         discharge_current_raw = int.from_bytes(payload[15:17], byteorder="big", signed=True)
         module_voltage_raw = int.from_bytes(payload[17:19], byteorder="big", signed=True)
         percentage_raw = int.from_bytes(payload[19:21], byteorder="big", signed=True)
+        water_level_raw = int.from_bytes(payload[21:23], byteorder="big", signed=True)
         parsed["humidity_raw"] = humidity_raw
         parsed["temperature_raw"] = temperature_raw
         parsed["humidity_pct"] = kHumScale * (humidity_raw / kRawMax)
@@ -461,6 +457,7 @@ def parse_status_payload(raw_payload):
         parsed["discharge_current_a"] = discharge_current_raw / 1000.0
         parsed["module_voltage_v"] = module_voltage_raw / 100.0
         parsed["battery_percentage"] = percentage_raw / 10.0
+        parsed["water_level"] = water_level_raw / 10  # unit: mm -> cm
 
     return parsed
 
@@ -490,12 +487,27 @@ def update_latest_sensor_status():
         except Exception:
             return
 
-    water_level = getattr(sensor_subscriber, "latest_water_level", None)
-    if water_level is None:
+    try:
+        snapshot = sensor_subscriber.get_snapshot()
+    except Exception:
+        return
+
+    if snapshot is None:
         return
 
     with status_lock:
-        latest_status["water_level"] = water_level
+        latest_status["timestamp"] = time.time()
+        latest_status["humidity_pct"] = snapshot.get("humidity")
+        latest_status["temperature_c"] = snapshot.get("temperature")
+        latest_status["water_level"] = snapshot.get("water_level")
+        latest_status["discharge_current_a"] = snapshot.get("discharge_current")
+        latest_status["module_voltage_v"] = snapshot.get("module_voltage")
+        latest_status["battery_percentage"] = snapshot.get("percentage")
+
+        ina_values = snapshot.get("ina4230", {})
+        latest_status["sensor_channels"] = [
+            ina_values.get(topic, 0.0) for topic in sensor_utils.INA4230_TOPIC
+        ]
 
 
 def sensor_subscriber_thread_func():
@@ -533,19 +545,19 @@ def receive_lora_response():
     print(f"[{time.time()}] mode: {mode_name}")
     print(f"[{time.time()}] mode_status: {mode_status_name}")
     print(f"[{time.time()}] sensor channels: {parsed_status['sensor_channels']}")
-    if "humidity_raw" in parsed_status:
-        print(f"[{time.time()}] humidity: {parsed_status['humidity_raw']} (raw) -> {parsed_status['humidity_pct']} %")
-        print(f"[{time.time()}] temperature: {parsed_status['temperature_raw']} (raw) -> {parsed_status['temperature_c']} °C")
-        print(f"[{time.time()}] discharge current: {parsed_status['discharge_current_a']} A")
-        print(f"[{time.time()}] voltage: {parsed_status['module_voltage_v']} V")
-        print(f"[{time.time()}] percentage: {parsed_status['battery_percentage']} %")
+    print(f"[{time.time()}] humidity: {parsed_status['humidity_raw']} (raw) -> {parsed_status['humidity_pct']} %")
+    print(f"[{time.time()}] temperature: {parsed_status['temperature_raw']} (raw) -> {parsed_status['temperature_c']} °C")
+    print(f"[{time.time()}] discharge current: {parsed_status['discharge_current_a']} A")
+    print(f"[{time.time()}] voltage: {parsed_status['module_voltage_v']} V")
+    print(f"[{time.time()}] percentage: {parsed_status['battery_percentage']} %")
+    print(f"[{time.time()}] water level: {parsed_status['water_level']} cm")
 
 # Joystick functions
 def map_joystick_value(x):
     return int(max(0, min(255, (128 / 49) * x + 127 - (128 / 49) * 53)))
 
 def read_joystick():
-    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_client, mapped_video
+    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_client, mapped_video, ID
 
     if input_ser.in_waiting > 0:
         received_data = rc_utils.read_frame(input_ser, b"\x0a\x0d", JOYSTICK_BIT_LEN, include_start_bytes=True)
@@ -576,10 +588,11 @@ def read_joystick():
             mapped_brush_speed = 100 if brush_speed > 100 else brush_speed
             mapped_light_pct = 100 if light_pct > 100 else light_pct
 
-            mapped_onoff = (button_data2 >> 2) & 1
+            mapped_onoff = (button_data2 >> 2) & 3
 
             # 00001000 and 00000100
             mapped_client = (button_data1 >> 2) & 1
+            ID = mapped_client
 
             mapped_video = (button_data2 >> 4) & 1
 
@@ -600,7 +613,7 @@ def send_manual_control(read_response=False):
                        mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y,
                        mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_video
                     ])
-    print(f"[{time.time()}]{mapped_left_y}")
+    print(f"[{time.time()}]{ID}")
     response = rc_utils.send_bytes(send_ser, byte_data, wait_time=0.3, read_response=read_response)
     return response
 

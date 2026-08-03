@@ -163,7 +163,7 @@ class SensorSubscriber(Node):
 
     def level_callback(self, msg):
         with self._lock:
-            self.latest_water_level = msg.data
+            self.latest_water_level = msg.data * 10.0
             self.latest_water_level_timestamp = self._get_timestamp()
         # self.get_logger().info('Water Level: %f' % msg.data)
 
