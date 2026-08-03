@@ -10,6 +10,8 @@ from datetime import datetime
 # 2: 90° counter-clockwise
 # 3: 90° clockwise & vertical flip
 
+FOLDER_PATH = "/home/master/recordings/"
+
 class CameraRecorder:
     def __init__(self):
         self.process = None
@@ -29,7 +31,7 @@ class CameraRecorder:
         self.is_running = True
         self.filename = self._generate_filename(camera)
         
-        command = f"rpicam-vid --camera {camera} -t {duration_seconds * 1000} --codec yuv420 --width 1280 --height 720 -o - | ffmpeg -f rawvideo -pix_fmt yuv420p -s 1280x720 -framerate 30 -i - -vf \"transpose={orientation}\" -c:v libx264 -preset veryfast {self.filename}"
+        command = f"rpicam-vid --camera {camera} -t {duration_seconds * 1000} --codec yuv420 --width 1280 --height 720 -o - | ffmpeg -f rawvideo -pix_fmt yuv420p -s 1280x720 -framerate 30 -i - -vf \"transpose={orientation}\" -c:v libx264 -preset veryfast {FOLDER_PATH}{self.filename}"
         print(f"command: {command}")
         print(f"Output file: {self.filename}")
         
