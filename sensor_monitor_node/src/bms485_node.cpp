@@ -1,152 +1,107 @@
-/* bms485_node.cpp - ROS 2 wrapper around the RS485 BMS poller.
- *
- * Publishes:
- *   ~/battery      (sensor_msgs/msg/BatteryState)
- *
- * Services:
- *   ~/trigger_read (std_srvs/srv/Trigger) - Trigger a single read cycle
- *
- * Parameters:
- *   serial_port     (string)  default "/dev/ttyAMA0"
- *   slave_id        (int)     default 1     (must be 1..16)
- *   resp_timeout_ms (int)     default 500
- *   frame_id        (string)  default "bms"
- */
-
-#include <cstdio>
-#include <cstdint>
-#include <cstring>
-#include <vector>
-#include <chrono>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/battery_state.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 #include <fcntl.h>
-#include <unistd.h>
 #include <termios.h>
-#include <errno.h>
+#include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
 #include <linux/serial.h>
+#include <cerrno>
+#include <cstring>
+#include <cmath>
+#include <chrono>
+#include <vector>
 
-#include "rclcpp/rclcpp.hpp"
-#include "sensor_msgs/msg/battery_state.hpp"
-#include "std_srvs/srv/trigger.hpp"
-
-using namespace std::chrono_literals;
-
-#define BAUDRATE   B9600
-#define TOTAL_COMMAND 3
-
-/* ----  Modbus CRC-16 lookup tables (verbatim from the BMS protocol PDF) ---- */
-static const uint8_t aucCRCHi[] = {
-    0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41,
-    0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40,
-    0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41,
-    0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41,
-    0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41,
-    0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40,
-    0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40,
-    0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40,
-    0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41,
-    0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40,
-    0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41,
-    0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41,
-    0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41,
-    0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41,
-    0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41,
-    0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41,
-    0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41,
-    0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40,
-    0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41,
-    0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41,
-    0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41,
-    0x00, 0xC1, 0x81, 0x40
-};
-static const uint8_t aucCRCLo[] = {
-    0x00, 0xC0, 0xC1, 0x01, 0xC3, 0x03, 0x02, 0xC2, 0xC6, 0x06, 0x07, 0xC7,
-    0x05, 0xC5, 0xC4, 0x04, 0xCC, 0x0C, 0x0D, 0xCD, 0x0F, 0xCF, 0xCE, 0x0E,
-    0x0A, 0xCA, 0xCB, 0x0B, 0xC9, 0x09, 0x08, 0xC8, 0xD8, 0x18, 0x19, 0xD9,
-    0x1B, 0xDB, 0xDA, 0x1A, 0x1E, 0xDE, 0xDF, 0x1F, 0xDD, 0x1D, 0x1C, 0xDC,
-    0x14, 0xD4, 0xD5, 0x15, 0xD7, 0x17, 0x16, 0xD6, 0xD2, 0x12, 0x13, 0xD3,
-    0x11, 0xD1, 0xD0, 0x10, 0xF0, 0x30, 0x31, 0xF1, 0x33, 0xF3, 0xF2, 0x32,
-    0x36, 0xF6, 0xF7, 0x37, 0xF5, 0x35, 0x34, 0xF4, 0x3C, 0xFC, 0xFD, 0x3D,
-    0xFF, 0x3F, 0x3E, 0xFE, 0xFA, 0x3A, 0x3B, 0xFB, 0x39, 0xF9, 0xF8, 0x38,
-    0x28, 0xE8, 0xE9, 0x29, 0xEB, 0x2B, 0x2A, 0xEA, 0xEE, 0x2E, 0x2F, 0xEF,
-    0x2D, 0xED, 0xEC, 0x2C, 0xE4, 0x24, 0x25, 0xE5, 0x27, 0xE7, 0xE6, 0x26,
-    0x22, 0xE2, 0xE3, 0x23, 0xE1, 0x21, 0x20, 0xE0, 0xA0, 0x60, 0x61, 0xA1,
-    0x63, 0xA3, 0xA2, 0x62, 0x66, 0xA6, 0xA7, 0x67, 0xA5, 0x65, 0x64, 0xA4,
-    0x6C, 0xAC, 0xAD, 0x6D, 0xAF, 0x6F, 0x6E, 0xAE, 0xAA, 0x6A, 0x6B, 0xAB,
-    0x69, 0xA9, 0xA8, 0x68, 0x78, 0xB8, 0xB9, 0x79, 0xBB, 0x7B, 0x7A, 0xBA,
-    0xBE, 0x7E, 0x7F, 0xBF, 0x7D, 0xBD, 0xBC, 0x7C, 0xB4, 0x74, 0x75, 0xB5,
-    0x77, 0xB7, 0xB6, 0x76, 0x72, 0xB2, 0xB3, 0x73, 0xB1, 0x71, 0x70, 0xB0,
-    0x50, 0x90, 0x91, 0x51, 0x93, 0x53, 0x52, 0x92, 0x96, 0x56, 0x57, 0x97,
-    0x55, 0x95, 0x94, 0x54, 0x9C, 0x5C, 0x5D, 0x9D, 0x5F, 0x9F, 0x9E, 0x5E,
-    0x5A, 0x9A, 0x9B, 0x5B, 0x99, 0x59, 0x58, 0x98, 0x88, 0x48, 0x49, 0x89,
-    0x4B, 0x8B, 0x8A, 0x4A, 0x4E, 0x8E, 0x8F, 0x4F, 0x8D, 0x4D, 0x4C, 0x8C,
-    0x44, 0x84, 0x85, 0x45, 0x87, 0x47, 0x46, 0x86, 0x82, 0x42, 0x43, 0x83,
-    0x41, 0x81, 0x80, 0x40
-};
-
-static uint16_t bms_crc16(const uint8_t *frame, uint16_t len)
+// ============================================================================
+// BMS Data Structure
+// ============================================================================
+struct BmsData
 {
-    uint16_t crc_hi = 0xFF;
-    uint8_t  crc_lo = 0xFF;
-    uint16_t idx;
-    while (len--) {
-        idx    = crc_lo ^ (*frame++ & 0x00FF);
-        crc_lo = (uint8_t)(crc_hi ^ aucCRCHi[idx]);
-        crc_hi = aucCRCLo[idx];
+    bool  module_valid      = false;
+    float module_voltage    = 0.0f;   // V
+    float charge_current    = 0.0f;   // A
+    float discharge_current = 0.0f;   // A
+    float soc               = 0.0f;   // 0..1 (fraction)
+    float total_capacity_ah = 0.0f;   // Ah
+    std::vector<float> cell_voltages; // V
+    std::vector<float> cell_temps;    // deg C
+};
+
+// ============================================================================
+// Modbus CRC16 (identical result to the table version in the PDF / C program)
+// ============================================================================
+static uint16_t bms_crc16(const uint8_t *data, size_t len)
+{
+    uint16_t crc = 0xFFFF;
+    for (size_t i = 0; i < len; i++) {
+        crc ^= data[i];
+        for (int b = 0; b < 8; b++)
+            crc = (crc & 1) ? ((crc >> 1) ^ 0xA001) : (crc >> 1);
     }
-    return (uint16_t)(crc_hi << 8 | crc_lo);
+    return crc;   // transmit low byte first
 }
 
-static int build_query_command(uint8_t *buf, uint8_t slave_id,
-                               uint16_t start_addr, uint16_t data_length)
+// ============================================================================
+// Build Modbus Query Command
+// ============================================================================
+static int build_query_command(uint8_t *out, uint8_t slave_id,
+                               uint16_t start_reg, uint16_t reg_count)
 {
-    buf[0] = slave_id;
-    buf[1] = 0x03;
-    buf[2] = (uint8_t)(start_addr >> 8);
-    buf[3] = (uint8_t)(start_addr & 0xFF);
-    buf[4] = (uint8_t)(data_length >> 8);
-    buf[5] = (uint8_t)(data_length & 0xFF);
-    uint16_t crc = bms_crc16(buf, 6);
-    buf[6] = (uint8_t)(crc & 0xFF);   // CRC LSB first
-    buf[7] = (uint8_t)(crc >> 8);     // CRC MSB
+    out[0] = slave_id;
+    out[1] = 0x03;
+    out[2] = (start_reg >> 8) & 0xFF;
+    out[3] =  start_reg       & 0xFF;
+    out[4] = (reg_count >> 8) & 0xFF;
+    out[5] =  reg_count       & 0xFF;
+
+    uint16_t crc = bms_crc16(out, 6);
+    out[6] =  crc       & 0xFF;   // CRC LSB first
+    out[7] = (crc >> 8) & 0xFF;
     return 8;
 }
 
-/* Aggregated decoded BMS state for one poll cycle. */
-struct BmsData {
-    std::vector<float> cell_voltages;     // V
-    std::vector<float> cell_temps;        // K
-    float    charge_current    = 0.0f;    // A
-    float    discharge_current = 0.0f;    // A
-    float    module_voltage    = 0.0f;    // V
-    uint16_t soc               = 0;       // %
-    uint32_t total_capacity    = 0;       // mAh
-    bool     module_valid      = false;
+// ============================================================================
+// Query table  --  MUST match bms485_serial.c
+//   idx 0 : 0x0004, 8 regs -> cell voltages     (1 mV  / LSB)
+//   idx 1 : 0x0026, 8 regs -> temperatures      (0.1 K / LSB)
+//   idx 2 : 0x0030, 6 regs -> module summary
+// ============================================================================
+enum { CMD_CELLS = 0, CMD_TEMPS = 1, CMD_MODULE = 2, TOTAL_COMMAND = 3 };
+
+struct Query { uint16_t start; uint16_t count; };
+static const Query kQueries[TOTAL_COMMAND] = {
+    { 0x0004, 8 },
+    { 0x0026, 8 },
+    { 0x0030, 6 },
 };
 
+// ============================================================================
+// BMS485 Node
+// ============================================================================
 class Bms485Node : public rclcpp::Node
 {
 public:
     Bms485Node() : Node("bms485_node")
     {
-        // ----- Parameters -----
-        serial_port_     = declare_parameter<std::string>("serial_port", "/dev/ttyAMA3");
-        slave_id_        = (uint8_t)declare_parameter<int>("slave_id", 1);
-        resp_timeout_ms_ = declare_parameter<int>("resp_timeout_ms", 500);
-        frame_id_        = declare_parameter<std::string>("frame_id", "bms");
+        serial_port_        = declare_parameter<std::string>("serial_port", "/dev/ttyAMA3");
+        slave_id_           = static_cast<uint8_t>(declare_parameter<int>("slave_id", 1));
+        resp_timeout_ms_    = declare_parameter<int>("resp_timeout_ms", 500);
+        frame_id_           = declare_parameter<std::string>("frame_id", "bms");
+        autonomous_polling_ = declare_parameter<bool>("autonomous_polling", true);
+        poll_period_        = declare_parameter<double>("poll_period", 1.0);
+        inter_cmd_ms_       = declare_parameter<int>("inter_cmd_delay_ms", 20);
+        require_rs485_      = declare_parameter<bool>("require_rs485_ioctl", true);
+        debug_frames_       = declare_parameter<bool>("debug_frames", false);
 
-        // ----- Publisher -----
         battery_pub_ = create_publisher<sensor_msgs::msg::BatteryState>("~/battery", 10);
 
-        // ----- Service -----
         trigger_service_ = create_service<std_srvs::srv::Trigger>(
             "~/trigger_read",
             std::bind(&Bms485Node::handle_trigger_read, this,
-                    std::placeholders::_1, std::placeholders::_2));
+                      std::placeholders::_1, std::placeholders::_2));
 
-        // ----- Open serial -----
         fd_ = serial_open(serial_port_.c_str());
         if (fd_ < 0) {
             RCLCPP_FATAL(get_logger(), "Failed to open serial port '%s'. Shutting down.",
@@ -155,179 +110,216 @@ public:
             return;
         }
 
-        RCLCPP_INFO(get_logger(), "BMS node ready on %s (slave_id=%u, trigger-based polling)",
-                    serial_port_.c_str(), slave_id_);
+        if (autonomous_polling_) {
+            RCLCPP_INFO(get_logger(),
+                "BMS polling on %s (slave_id=%u, period=%.1f s)",
+                serial_port_.c_str(), slave_id_, poll_period_);
+            timer_ = create_wall_timer(
+                std::chrono::duration<double>(poll_period_),
+                std::bind(&Bms485Node::timer_callback, this));
+        } else {
+            RCLCPP_INFO(get_logger(),
+                "BMS node ready on %s (slave_id=%u, trigger-based polling only)",
+                serial_port_.c_str(), slave_id_);
+        }
     }
 
-    ~Bms485Node() override
-    {
-        if (fd_ >= 0) close(fd_);
-    }
+    ~Bms485Node() override { if (fd_ >= 0) close(fd_); }
 
 private:
-    // ---------------- serial helpers ----------------
-    int serial_open(const char *device)
+    // ---------------- Serial port open ----------------
+    int serial_open(const char* device)
     {
+        // NOTE: no O_NDELAY -- we control blocking with select() + VMIN/VTIME=0,
+        // exactly like the working C program.
         int fd = open(device, O_RDWR | O_NOCTTY);
-        if (fd < 0) { RCLCPP_ERROR(get_logger(), "open: %s", strerror(errno)); return -1; }
+        if (fd < 0) {
+            RCLCPP_ERROR(get_logger(), "Cannot open %s: %s", device, strerror(errno));
+            return -1;
+        }
 
-        struct termios tty;
-        if (tcgetattr(fd, &tty) != 0) {
+        struct termios tio;
+        if (tcgetattr(fd, &tio) != 0) {
             RCLCPP_ERROR(get_logger(), "tcgetattr: %s", strerror(errno));
             close(fd); return -1;
         }
 
-        cfsetispeed(&tty, BAUDRATE);
-        cfsetospeed(&tty, BAUDRATE);
+        cfsetispeed(&tio, B9600);
+        cfsetospeed(&tio, B9600);
 
-        tty.c_cflag &= ~PARENB;
-        tty.c_cflag &= ~CSTOPB;
-        tty.c_cflag &= ~CSIZE;
-        tty.c_cflag |= CS8;
-        tty.c_cflag &= ~CRTSCTS;
-        tty.c_cflag |= CREAD | CLOCAL;
+        tio.c_cflag &= ~PARENB;
+        tio.c_cflag &= ~CSTOPB;
+        tio.c_cflag &= ~CSIZE;
+        tio.c_cflag |=  CS8;
+        tio.c_cflag &= ~CRTSCTS;
+        tio.c_cflag |= (CLOCAL | CREAD);
 
-        tty.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
-        tty.c_iflag &= ~(IXON | IXOFF | IXANY);
-        tty.c_iflag &= ~(INLCR | ICRNL);
-        tty.c_oflag &= ~OPOST;
+        tio.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+        tio.c_iflag &= ~(IXON | IXOFF | IXANY | ICRNL | INLCR);
+        tio.c_oflag &= ~OPOST;
 
-        tty.c_cc[VMIN]  = 0;
-        tty.c_cc[VTIME] = 0;
+        tio.c_cc[VMIN]  = 0;
+        tio.c_cc[VTIME] = 0;
 
-        if (tcsetattr(fd, TCSANOW, &tty) != 0) {
+        if (tcsetattr(fd, TCSANOW, &tio) != 0) {
             RCLCPP_ERROR(get_logger(), "tcsetattr: %s", strerror(errno));
             close(fd); return -1;
         }
+        tcflush(fd, TCIOFLUSH);
 
-        // Hardware RS485 direction control via RTS/DIR
+        // Hardware RS485 direction control (same values as the working C code)
         struct serial_rs485 rs485;
         memset(&rs485, 0, sizeof(rs485));
         rs485.flags = SER_RS485_ENABLED | SER_RS485_RTS_ON_SEND;
         rs485.delay_rts_before_send = 0;
-        rs485.delay_rts_after_send  = 1;
+        rs485.delay_rts_after_send  = 1;      // <-- was 0; 1 ms turnaround like C version
+
         if (ioctl(fd, TIOCSRS485, &rs485) < 0) {
-            RCLCPP_ERROR(get_logger(),
-                "TIOCSRS485 failed (driver may not support hardware RS485): %s",
-                strerror(errno));
-            close(fd); return -1;
+            RCLCPP_ERROR(get_logger(), "ioctl(TIOCSRS485) failed: %s", strerror(errno));
+            if (require_rs485_) {             // without DE control you read your own TX
+                close(fd);
+                return -1;
+            }
+        } else {
+            struct serial_rs485 chk;
+            memset(&chk, 0, sizeof(chk));
+            if (ioctl(fd, TIOCGRS485, &chk) == 0)
+                RCLCPP_INFO(get_logger(), "RS485 readback flags = 0x%x %s", chk.flags,
+                            (chk.flags & SER_RS485_ENABLED) ? "(ENABLED)" : "(NOT ENABLED!)");
         }
-
-        struct serial_rs485 chk;
-        memset(&chk, 0, sizeof(chk));
-        if (ioctl(fd, TIOCGRS485, &chk) == 0)
-            RCLCPP_INFO(get_logger(), "RS485 readback flags = 0x%x %s",
-                        chk.flags,
-                        (chk.flags & SER_RS485_ENABLED) ? "(ENABLED)" : "(NOT ENABLED!)");
-
         return fd;
     }
 
-    int rs485_send(const uint8_t *data, size_t len)
+    // ---------------- RS485 send ----------------
+    int rs485_send(const uint8_t* data, int len)
     {
-        ssize_t w = write(fd_, data, len);
-        if (w < 0) return -1;
+        int written = static_cast<int>(write(fd_, data, len));
+        if (written < 0) return -1;
         tcdrain(fd_);
-        return (int)w;
+        return written;
     }
 
-    int read_response(uint8_t *buf, size_t bufsz, int timeout_ms)
+    // ---------------- Read one frame: first-byte timeout + idle-gap ----------------
+    int read_response(uint8_t* buf, size_t bufsize, int timeout_ms, int gap_ms = 30)
     {
         size_t total = 0;
-        int first = 1;
-        while (total < bufsz) {
-            fd_set rfds;
-            FD_ZERO(&rfds);
-            FD_SET(fd_, &rfds);
+        bool   first = true;
 
+        while (total < bufsize) {
+            fd_set rfds; FD_ZERO(&rfds); FD_SET(fd_, &rfds);
+
+            int wait_ms = first ? timeout_ms : gap_ms;   // 30 ms silence == end of frame
             struct timeval tv;
-            int wait_ms = first ? timeout_ms : 30;   // 30 ms idle gap = frame end
             tv.tv_sec  = wait_ms / 1000;
             tv.tv_usec = (wait_ms % 1000) * 1000;
 
-            int r = select(fd_ + 1, &rfds, NULL, NULL, &tv);
+            int r = select(fd_ + 1, &rfds, nullptr, nullptr, &tv);
             if (r < 0) { if (errno == EINTR) continue; return -1; }
-            if (r == 0) break;
+            if (r == 0) break;                            // timeout -> done
 
-            ssize_t n = read(fd_, buf + total, bufsz - total);
-            if (n < 0) { if (errno == EINTR) continue; return -1; }
+            ssize_t n = read(fd_, buf + total, bufsize - total);
+            if (n < 0) {
+                if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) continue;
+                return -1;
+            }
             if (n == 0) break;
 
-            total += (size_t)n;
-            first = 0;
+            total += static_cast<size_t>(n);
+            first  = false;
         }
-        return (int)total;
+        return static_cast<int>(total);
     }
 
-    // ---------------- decoding ----------------
-    void decode_status_block(uint8_t type, const uint8_t *d, int data_bytes, BmsData &out)
+    // ---------------- Decode (mirrors decode_status_block() in the C program) -------
+    void decode_status_block(int cmd_index, const uint8_t* d, int len, BmsData& out)
     {
-        switch (type) {
-            case 0: // cells, 0.001 V per LSB
-                for (int i = 0; i + 1 < data_bytes; i += 2) {
-                    uint16_t v = (d[i] << 8) | d[i + 1];
-                    out.cell_voltages.push_back(v / 1000.0f);
-                }
-                break;
-            case 1: // temps, 0.1 K per LSB
-                for (int i = 0; i + 1 < data_bytes; i += 2) {
-                    uint16_t t = (d[i] << 8) | d[i + 1];
-                    out.cell_temps.push_back(t / 10.0f);
-                }
-                break;
-            case 2: // module
-                if (data_bytes < 12) {
-                    RCLCPP_WARN(get_logger(), "module block short (%d bytes)", data_bytes);
-                    return;
-                }
-                out.charge_current    = ((d[0] << 8) | d[1]) / 10.0f;   // 0.1 A
-                out.discharge_current = ((d[2] << 8) | d[3]) / 10.0f;   // 0.1 A
-                out.module_voltage    = ((d[4] << 8) | d[5]) / 100.0f;  // 0.01 V
-                out.soc               =  (d[6] << 8) | d[7];            // %
-                out.total_capacity    = ((uint32_t)d[8]  << 24) |
-                                         ((uint32_t)d[9]  << 16) |
-                                         ((uint32_t)d[10] << 8)  |
-                                          (uint32_t)d[11];              // mAh
-                out.module_valid      = true;
-                break;
+        auto u16 = [&](int off) -> uint16_t {
+            return static_cast<uint16_t>((d[off] << 8) | d[off + 1]);
+        };
+
+        switch (cmd_index) {
+
+        case CMD_CELLS:                       // 0x0004..: 1 mV per LSB
+            out.cell_voltages.clear();
+            for (int i = 0; i + 1 < len; i += 2)
+                out.cell_voltages.push_back(u16(i) * 0.001f);
+            break;
+
+        case CMD_TEMPS:                       // 0x0026..: 0.1 C per LSB
+            out.cell_temps.clear();
+            for (int i = 0; i + 1 < len; i += 2)
+                out.cell_temps.push_back(u16(i) * 0.1f);
+            break;
+
+        case CMD_MODULE:                      // 0x0030.. : 6 registers = 12 bytes
+            if (len < 12) {
+                RCLCPP_WARN(get_logger(), "module block short (%d bytes)", len);
+                return;
+            }
+            out.charge_current    = u16(0) * 0.1f;    // 0.1 A
+            out.discharge_current = u16(2) * 0.1f;    // 0.1 A
+            out.module_voltage    = u16(4) * 0.01f;   // 0.01 V
+            out.soc               = u16(6) * 0.01f;   // % -> 0..1 for BatteryState
+            {   // 32-bit capacity in mAh
+                uint32_t cap_mah = (static_cast<uint32_t>(d[8])  << 24) |
+                                   (static_cast<uint32_t>(d[9])  << 16) |
+                                   (static_cast<uint32_t>(d[10]) <<  8) |
+                                   (static_cast<uint32_t>(d[11]));
+                out.total_capacity_ah = cap_mah / 1000.0f;
+            }
+            out.module_valid = true;
+            break;
+
+        default: break;
         }
     }
 
-    // ---------------- publishing ----------------
+    // ---------------- Timer ----------------
+    void timer_callback()
+    {
+        BmsData data;
+        if (perform_single_poll(data)) publish(data);
+    }
+
+    // ---------------- Publish ----------------
     void publish(const BmsData &data)
     {
-        auto stamp = now();
-
         sensor_msgs::msg::BatteryState bat;
-        bat.header.stamp = stamp;
+        bat.header.stamp    = now();
         bat.header.frame_id = frame_id_;
+
         bat.voltage    = data.module_voltage;
+        // ROS convention: negative when discharging, positive when charging
         bat.current    = data.charge_current - data.discharge_current;
-        bat.charge     = data.total_capacity / 1000.0f;  // Convert mAh to Ah
-        bat.percentage = data.soc;
+        bat.percentage = data.soc;                                   // 0.0 .. 1.0
+        bat.capacity        = data.total_capacity_ah;                // Ah
+        bat.design_capacity = data.total_capacity_ah;                // Ah
+        bat.charge          = data.soc * data.total_capacity_ah;     // Ah remaining
         bat.present    = data.module_valid;
-        bat.power_supply_status =
-            (data.charge_current > 0.0f)
-                ? sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_CHARGING
-            : (data.discharge_current > 0.0f)
-                ? sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_DISCHARGING
-                : sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_NOT_CHARGING;
+
+        if (data.charge_current > 0.05f)
+            bat.power_supply_status = sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_CHARGING;
+        else if (data.discharge_current > 0.05f)
+            bat.power_supply_status = sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_DISCHARGING;
+        else
+            bat.power_supply_status = sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_NOT_CHARGING;
+
         bat.power_supply_health     = sensor_msgs::msg::BatteryState::POWER_SUPPLY_HEALTH_UNKNOWN;
         bat.power_supply_technology = sensor_msgs::msg::BatteryState::POWER_SUPPLY_TECHNOLOGY_UNKNOWN;
-        bat.cell_voltage    = data.cell_voltages;
+
+        bat.cell_voltage     = data.cell_voltages;
         bat.cell_temperature = data.cell_temps;
+
         battery_pub_->publish(bat);
     }
 
-    // ---------------- trigger service handler ----------------
+    // ---------------- Trigger service ----------------
     void handle_trigger_read(
         const std::shared_ptr<std_srvs::srv::Trigger::Request>,
         std::shared_ptr<std_srvs::srv::Trigger::Response> response)
     {
         BmsData data;
-        bool success = perform_single_poll(data);
-        
-        if (success) {
+        if (perform_single_poll(data)) {
             publish(data);
             response->success = true;
             response->message = "BMS poll complete";
@@ -337,65 +329,102 @@ private:
         }
     }
 
+    // ---------------- One full poll (3 commands) ----------------
     bool perform_single_poll(BmsData &data)
     {
         uint8_t tx[TOTAL_COMMAND][8];
-        int txlen[TOTAL_COMMAND] = {
-            build_query_command(tx[0], slave_id_, 0x0004, 8),
-            build_query_command(tx[1], slave_id_, 0x0026, 8),
-            build_query_command(tx[2], slave_id_, 0x0030, 6)
-        };
+        int     txlen[TOTAL_COMMAND];
+        for (int i = 0; i < TOTAL_COMMAND; ++i)
+            txlen[i] = build_query_command(tx[i], slave_id_,
+                                           kQueries[i].start, kQueries[i].count);
 
-        for (uint8_t i = 0; i < TOTAL_COMMAND; i++) {
+        bool all_ok = true;
+
+        for (int i = 0; i < TOTAL_COMMAND; i++) {
             tcflush(fd_, TCIFLUSH);
 
             if (rs485_send(tx[i], txlen[i]) < 0) {
                 RCLCPP_ERROR(get_logger(), "send query failed: %s", strerror(errno));
                 return false;
             }
+            if (debug_frames_) hexdump("TX", tx[i], txlen[i]);
 
             uint8_t rx[256];
             int n = read_response(rx, sizeof(rx), resp_timeout_ms_);
-            if (n <= 0) {
-                RCLCPP_WARN(get_logger(), "cmd %u: no response", i);
-                return false;
-            }
-            if (n < 5) {
-                RCLCPP_WARN(get_logger(), "cmd %u: frame too short (%d)", i, n);
-                return false;
-            }
+            if (debug_frames_ && n > 0) hexdump("RX", rx, n);
+
+            if (n <= 0)  { RCLCPP_WARN(get_logger(), "cmd %d: no response", i);            all_ok = false; continue; }
+            if (n < 7)   { RCLCPP_WARN(get_logger(), "cmd %d: frame too short (%d)", i, n); all_ok = false; continue; }
 
             uint16_t calc = bms_crc16(rx, n - 2);
-            uint16_t recv = (rx[n - 1] << 8) | rx[n - 2];
+            uint16_t recv = static_cast<uint16_t>((rx[n - 1] << 8) | rx[n - 2]);
             if (calc != recv) {
-                RCLCPP_WARN(get_logger(), "cmd %u: CRC mismatch", i);
-                return false;
+                RCLCPP_WARN(get_logger(), "cmd %d: CRC mismatch (calc=%04X recv=%04X)", i, calc, recv);
+                all_ok = false; continue;
+            }
+            if (rx[0] != slave_id_) {
+                RCLCPP_WARN(get_logger(), "cmd %d: wrong slave id 0x%02X", i, rx[0]);
+                all_ok = false; continue;
             }
 
-            if (rx[1] == 0x03) {
-                uint16_t reg_count = (rx[2] << 8) | rx[3];
-                int data_bytes = reg_count * 2;
-                if (data_bytes > n - 5) data_bytes = n - 5;
-                decode_status_block(i, &rx[4], data_bytes, data);
-            } else {
-                return false;
+            if (rx[1] == (0x03 | 0x80)) {                    // exception response
+                const char* txt = "unknown";
+                switch (rx[2]) {
+                    case 0x01: txt = "slave ID out of range"; break;
+                    case 0x02: txt = "command type error";    break;
+                    case 0x03: txt = "CRC error";             break;
+                }
+                RCLCPP_WARN(get_logger(), "cmd %d: BMS error 0x%02X (%s)", i, rx[2], txt);
+                all_ok = false; continue;
             }
+            if (rx[1] != 0x03) {
+                RCLCPP_WARN(get_logger(), "cmd %d: unexpected function 0x%02X", i, rx[1]);
+                all_ok = false; continue;
+            }
+
+            // Frame: [0]=id [1]=0x03 [2..3]=register count [4..]=data [n-2..n-1]=CRC
+            uint16_t reg_count  = static_cast<uint16_t>((rx[2] << 8) | rx[3]);
+            int      data_bytes = reg_count * 2;
+            const int avail     = n - 6;                     // <-- was n - 5 (off by one)
+            if (data_bytes > avail) data_bytes = avail;
+            if (data_bytes <= 0) { all_ok = false; continue; }
+
+            decode_status_block(i, &rx[4], data_bytes, data);
+
+            if (inter_cmd_ms_ > 0 && i + 1 < TOTAL_COMMAND)
+                usleep(inter_cmd_ms_ * 1000);
         }
-        return true;
+
+        // Publish only if at least the module block came back
+        return all_ok && data.module_valid;
     }
 
-    // ---------------- members ----------------
+    void hexdump(const char* label, const uint8_t* b, int n)
+    {
+        char line[3 * 256 + 1]; int p = 0;
+        for (int i = 0; i < n && p < (int)sizeof(line) - 3; i++)
+            p += snprintf(line + p, sizeof(line) - p, "%02X ", b[i]);
+        RCLCPP_INFO(get_logger(), "%s (%d): %s", label, n, line);
+    }
+
+    // ---------------- Members ----------------
     int         fd_ = -1;
     std::string serial_port_;
     uint8_t     slave_id_;
     int         resp_timeout_ms_;
     std::string frame_id_;
+    bool        autonomous_polling_;
+    double      poll_period_;
+    int         inter_cmd_ms_;
+    bool        require_rs485_;
+    bool        debug_frames_;
 
-    rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr   battery_pub_;
+    rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_pub_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr trigger_service_;
+    rclcpp::TimerBase::SharedPtr timer_;
 };
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<Bms485Node>());

@@ -20,6 +20,7 @@ def generate_launch_description():
                 'serial_port': '/dev/ttyAMA3',
                 'slave_id': 1,
                 'resp_timeout_ms': 500,
+                'autonomous_polling': False,  # <-- ADD THIS LINE
             }],
         ),
         
