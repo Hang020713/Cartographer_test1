@@ -42,8 +42,8 @@ def generate_launch_description():
             executable='rs485_coordinator',
             name='rs485_coordinator',
             parameters=[{
-                'bms_poll_interval_ms': 2000,
-                'level_poll_interval_ms': 2000,
+                'bms_poll_interval_ms': 500,
+                'level_poll_interval_ms': 500,
                 'bus_acquire_timeout_ms': 500,
             }],
         ),

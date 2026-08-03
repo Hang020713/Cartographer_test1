@@ -22,8 +22,8 @@ class Rs485Coordinator : public rclcpp::Node
 public:
     Rs485Coordinator() : Node("rs485_coordinator")
     {
-        bms_interval_ms_   = declare_parameter<int>("bms_poll_interval_ms", 1000);
-        level_interval_ms_ = declare_parameter<int>("level_poll_interval_ms", 1000);
+        bms_interval_ms_   = declare_parameter<int>("bms_poll_interval_ms", 2000);
+        level_interval_ms_ = declare_parameter<int>("level_poll_interval_ms", 2000);
         acquire_timeout_ms_ = declare_parameter<int>("bus_acquire_timeout_ms", 500);
 
         // Service clients to control bus access

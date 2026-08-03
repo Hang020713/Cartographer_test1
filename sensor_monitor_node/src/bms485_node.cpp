@@ -259,7 +259,7 @@ private:
             out.charge_current    = u16(0) * 0.1f;    // 0.1 A
             out.discharge_current = u16(2) * 0.1f;    // 0.1 A
             out.module_voltage    = u16(4) * 0.01f;   // 0.01 V
-            out.soc               = u16(6) * 0.01f;   // % -> 0..1 for BatteryState
+            out.soc               = u16(6);
             {   // 32-bit capacity in mAh
                 uint32_t cap_mah = (static_cast<uint32_t>(d[8])  << 24) |
                                    (static_cast<uint32_t>(d[9])  << 16) |

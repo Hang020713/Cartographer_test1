@@ -10,7 +10,8 @@ ros2 run sensor_monitor sht3x_node &
 PID1=$!
 ros2 run sensor_monitor ina4230_node &
 PID2=$!
-ros2 run sensor_monitor bms485_node &
+# ros2 run sensor_monitor bms485_node &
+ros2 launch sensor_monitor rs485_handler.launch.py &
 PID3=$!
 
 # Wait for both processes
