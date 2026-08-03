@@ -30,6 +30,12 @@ class CameraRecorder:
         self.start_time = time.time()
         self.is_running = True
         self.filename = self._generate_filename(camera)
+
+        if not os.path.exists(FOLDER_PATH):
+            os.makedirs(FOLDER_PATH, exist_ok=True)
+            print(f"Created recording folder: {FOLDER_PATH}")
+        else:
+            print(f"Recording folder exists: {FOLDER_PATH}")
         
         command = f"rpicam-vid --camera {camera} -t {duration_seconds * 1000} --codec yuv420 --width 1280 --height 720 -o - | ffmpeg -f rawvideo -pix_fmt yuv420p -s 1280x720 -framerate 30 -i - -vf \"transpose={orientation}\" -c:v libx264 -preset veryfast {FOLDER_PATH}{self.filename}"
         print(f"command: {command}")
