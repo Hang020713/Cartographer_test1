@@ -5,7 +5,7 @@ import serial.tools.list_ports
 from enum import IntEnum
 
 INQUERY_PAYLOAD_LEN = 12
-STATUS_PAYLOAD_LEN = 23
+STATUS_PAYLOAD_LEN = 24
 # STATUS_PAYLOAD_LEN = 4
 
 class COMMANDS(IntEnum):
@@ -53,6 +53,14 @@ def has_heartbeat_timed_out(last_seen_time, timeout_seconds, now=None):
         now = time.time()
 
     return (now - last_seen_time) > timeout_seconds
+
+def pwm_to_unit(pwm, center, min_v, max_v):
+    if pwm >= center:
+        denom = (max_v - center) if (max_v - center) != 0 else 1
+        return (pwm - center) / denom
+    else:
+        denom = (center - min_v) if (center - min_v) != 0 else 1
+        return (pwm - center) / denom
 
 def raw_to_percent(
     raw: int,

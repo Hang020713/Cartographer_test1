@@ -23,22 +23,22 @@ class OffboardControl(Node):
         # Create publishers
         self.offboard_control_mode_publisher = self.create_publisher(
             OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
-        self.trajectory_setpoint_publisher = self.create_publisher(
-            TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
-        self.vehicle_command_publisher = self.create_publisher(
-            VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
+        # self.trajectory_setpoint_publisher = self.create_publisher(
+        #     TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
+        # self.vehicle_command_publisher = self.create_publisher(
+        #     VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
 
-        # Create subscribers
-        self.vehicle_local_position_subscriber = self.create_subscription(
-            VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.vehicle_local_position_callback, qos_profile)
-        self.vehicle_status_subscriber = self.create_subscription(
-            VehicleStatus, '/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
+        # # Create subscribers
+        # self.vehicle_local_position_subscriber = self.create_subscription(
+        #     VehicleLocalPosition, '/fmu/out/vehicle_local_position', self.vehicle_local_position_callback, qos_profile)
+        # self.vehicle_status_subscriber = self.create_subscription(
+        #     VehicleStatus, '/fmu/out/vehicle_status', self.vehicle_status_callback, qos_profile)
 
-        # Initialize variables
-        self.offboard_setpoint_counter = 0
-        self.vehicle_local_position = VehicleLocalPosition()
-        self.vehicle_status = VehicleStatus()
-        self.takeoff_height = -5.0
+        # # Initialize variables
+        # self.offboard_setpoint_counter = 0
+        # self.vehicle_local_position = VehicleLocalPosition()
+        # self.vehicle_status = VehicleStatus()
+        # self.takeoff_height = -5.0
 
         # Create a timer to publish control commands
         self.timer = self.create_timer(0.1, self.timer_callback)
@@ -121,15 +121,15 @@ class OffboardControl(Node):
             self.engage_offboard_mode()
             self.arm()
 
-        if self.vehicle_local_position.z > self.takeoff_height and self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
-            self.publish_position_setpoint(0.0, 0.0, self.takeoff_height)
+        # if self.vehicle_local_position.z > self.takeoff_height and self.vehicle_status.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
+        #     self.publish_position_setpoint(0.0, 0.0, self.takeoff_height)
 
-        elif self.vehicle_local_position.z <= self.takeoff_height:
-            self.land()
-            exit(0)
+        # elif self.vehicle_local_position.z <= self.takeoff_height:
+        #     self.land()
+        #     exit(0)
 
-        if self.offboard_setpoint_counter < 11:
-            self.offboard_setpoint_counter += 1
+        # if self.offboard_setpoint_counter < 11:
+        #     self.offboard_setpoint_counter += 1
 
 
 def main(args=None) -> None:

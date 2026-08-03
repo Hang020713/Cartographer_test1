@@ -40,7 +40,7 @@ BMS485_TOPIC = "/bms485_node/battery"
 LEVEL_TRANSMITTER_TOPIC = "/level_transmitter_node/level"
 
 # Timeout settings (in seconds)
-SENSOR_TIMEOUT_S = 5.0  # Consider data stale after 5 seconds
+SENSOR_TIMEOUT_S = 2.0  # Consider data stale after 5 seconds
 
 class SensorSubscriber(Node):
 

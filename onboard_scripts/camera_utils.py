@@ -37,7 +37,7 @@ class CameraRecorder:
         else:
             print(f"Recording folder exists: {FOLDER_PATH}")
         
-        command = f"rpicam-vid --camera {camera} -t {duration_seconds * 1000} --codec yuv420 --width 1280 --height 720 -o - | ffmpeg -f rawvideo -pix_fmt yuv420p -s 1280x720 -framerate 30 -i - -vf \"transpose={orientation}\" -c:v libx264 -preset veryfast {FOLDER_PATH}{self.filename}"
+        command = f"rpicam-vid --camera {camera} -t {duration_seconds * 1000} --codec yuv420 --width 1280 --height 720 -o - | ffmpeg -f rawvideo -pix_fmt yuv420p -s 1280x720 -framerate 30 -i - -c:v libx264 -preset veryfast {FOLDER_PATH}{self.filename}"
         print(f"command: {command}")
         print(f"Output file: {self.filename}")
         

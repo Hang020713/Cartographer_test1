@@ -95,6 +95,7 @@ latest_status = {
     "brush_speed": None,
     "light_pct": None,
     "onoff": None,
+    "selected_client": None,
 }
 
 
@@ -131,6 +132,7 @@ def update_latest_joystick_status():
         brush_speed = mapped_brush_speed
         light_pct = mapped_light_pct
         onoff = mapped_onoff
+        selected_client = mapped_client
 
     with status_lock:
         latest_status["timestamp"] = time.time()
@@ -142,6 +144,7 @@ def update_latest_joystick_status():
         latest_status["brush_speed"] = brush_speed
         latest_status["light_pct"] = light_pct
         latest_status["onoff"] = onoff
+        latest_status["selected_client"] = selected_client
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +177,25 @@ DASHBOARD_HTML = """
             background: #ef4444; margin-right: 6px; vertical-align: middle;
         }
         .status-line .dot.live { background: #22c55e; }
+        .warning-banner {
+            display: none;
+            margin: 0 auto 16px;
+            max-width: 420px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: #1f2937;
+            color: #fca5a5;
+            border: 1px solid #7f1d1d;
+            text-align: center;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+        }
+        .warning-banner.active {
+            display: block;
+            background: #7f1d1d;
+            color: #fff1f2;
+            border-color: #fecaca;
+        }
         .dashboard {
             display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 16px; align-items: start;
         }
@@ -256,6 +278,7 @@ DASHBOARD_HTML = """
         <span class="dot" id="live-dot"></span>
         <span id="last-update">Waiting for data...</span>
     </div>
+    <div class="warning-banner" id="client-warning"></div>
 
     <div class="dashboard">
 
@@ -305,6 +328,7 @@ DASHBOARD_HTML = """
             <div class="card"><span class="label">Brush Speed</span><span class="value"><span id="brush_speed">--</span><span class="unit">%</span></span></div>
             <div class="card"><span class="label">Light</span><span class="value"><span id="light_pct">--</span><span class="unit">%</span></span></div>
             <div class="card"><span class="label">On / Off</span><span class="value"><span id="onoff_status">--</span></span></div>
+            <div class="card"><span class="label">Selected Client</span><span class="value"><span id="selected_client">--</span></span></div>
 
             <div class="section-title">Right Joystick</div>
             <div class="joystick-widget">
@@ -331,6 +355,27 @@ DASHBOARD_HTML = """
         function fmtOnOff(v) {
             if (v === null || v === undefined) return "--";
             return Number(v) === 0 ? "OFF" : "ON";
+        }
+        function fmtClient(v) {
+            if (v === null || v === undefined) return "None (0x00)";
+            const value = Number(v);
+            if (value === 1) return "Slave (0x01)";
+            if (value === 2) return "Master (0x02)";
+            return "None (0x00)";
+        }
+        function updateClientWarning(v) {
+            const banner = document.getElementById('client-warning');
+            const value = Number(v);
+            if (value === 1) {
+                banner.textContent = 'WARNING: Slave client selected (0x01)';
+                banner.classList.add('active');
+            } else if (value === 2) {
+                banner.textContent = 'WARNING: Master client selected (0x02)';
+                banner.classList.add('active');
+            } else {
+                banner.textContent = '';
+                banner.classList.remove('active');
+            }
         }
         function clamp(v, min, max) {
             return Math.min(max, Math.max(min, v));
@@ -364,6 +409,8 @@ DASHBOARD_HTML = """
                 document.getElementById('brush_speed').textContent = fmt(d.brush_speed, 0);
                 document.getElementById('light_pct').textContent = fmt(d.light_pct, 0);
                 document.getElementById('onoff_status').textContent = fmtOnOff(d.onoff);
+                document.getElementById('selected_client').textContent = fmtClient(d.selected_client);
+                updateClientWarning(d.selected_client);
 
                 const dot = document.getElementById('live-dot');
                 const lbl = document.getElementById('last-update');
@@ -457,7 +504,7 @@ def parse_status_payload(raw_payload):
         parsed["discharge_current_a"] = discharge_current_raw / 1000.0
         parsed["module_voltage_v"] = module_voltage_raw / 100.0
         parsed["battery_percentage"] = percentage_raw / 10.0
-        parsed["water_level"] = water_level_raw / 10  # unit: mm -> cm
+        parsed["water_level"] = water_level_raw / 100  # unit: mm -> cm
 
     return parsed
 

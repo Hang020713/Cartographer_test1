@@ -1,5 +1,5 @@
 import remote_control_utils as rc_utils
-from mavlink_controller import MavController
+from mavlink_controller import MavController, mavutil
 import time
 import threading
 import queue
@@ -10,7 +10,7 @@ import rclpy
 
 HAVE_PIXHAWK = True
 CLIENT_TYPE = "MASTER"
-#CLIENT_TYPE = "SLAVE"
+# CLIENT_TYPE = "SLAVE"
 
 # Functions Parameters
 INPUT_PORT=None  # Serial port to be selected by the user
@@ -40,26 +40,48 @@ STEERING_PWM_CENTER = 1500
 BRUSH_PWM_MIN = 1000
 BRUSH_PWM_MAX = 2000
 BRUSHED_PWM_CENTER = 1500
-BRUSH_LEFT_CHANNEL=2
-BRUSH_RIGHT_CHANNEL=1
+BRUSH_LEFT_CHANNEL= {
+    "MASTER": 2,
+    "SLAVE": 3
+}
+BRUSH_RIGHT_CHANNEL= {
+    "MASTER": 1,
+    "SLAVE": 4
+}
 
 PWM_PIN_MAP = {
     "18": ("2", "a3"),
     "19": ("3", "a3"),
 }
 UVC_LIGHT_PIN = "19"
-UVC_LIGHT_FREQ = 500
+UVC_LIGHT_FREQ = {
+    "MASTER": 500,
+    "SLAVE": 2000
+}
 UVC_LIGHT_LAST_DUTY = -1
-UVC_LIGHT_MIN = 55
-UVC_LIGHT_MAX = 95
-UVC_LIGHT_CENTER = 75
+UVC_LIGHT_MIN = {
+    "MASTER": 55,
+    "SLAVE": 0
+}
+UVC_LIGHT_MAX = {
+    "MASTER": 95,
+    "SLAVE": 100
+}
+UVC_LIGHT_CENTER = {
+    "MASTER": 75,
+    "SLAVE": 50
+}
 
 # Camera
 camera_recorder = None
 
 # Payload parameter
 MESSAGE_ID = 0xAA
-ID = 0x00
+ID = {
+    "MASTER": 0x02,
+    "SLAVE": 0x01
+}
+FRAME_HEADER = bytes([MESSAGE_ID, ID[CLIENT_TYPE]])
 
 # Current system status
 current_mode = rc_utils.MODES.MANUAL
@@ -139,7 +161,7 @@ def build_status_payload(sensor_readings):
 
     payload = [
         MESSAGE_ID,
-        ID,
+        ID[CLIENT_TYPE],
         int(current_mode),
         int(current_mode_status),
         *sensor_bytes,
@@ -147,8 +169,7 @@ def build_status_payload(sensor_readings):
         *temperature_bytes,
         *discharge_current_bytes,
         *voltage_bytes,
-        *percentage_bytes,
-        *water_level_bytes
+        *percentage_bytes
     ]
     return bytes(payload)
 
@@ -192,11 +213,34 @@ def disable_mavlink_output():
 
     print("Stopping MAVLink output to protect the vehicle.")
     if CLIENT_TYPE == "SLAVE":
+        mav_master.mav.manual_control_send(
+            mav_master.target_system,
+            0,  # pitch (forward/back)
+            0,  # roll (left/right)
+            0,  # throttle
+            0,  # yaw
+            0          # buttons
+        )
+
+        mav_master.mav.command_long_send(
+            mav_master.target_system,
+            mav_master.target_component,
+            187,                # Command ID
+            0,                  # Confirmation
+            float(0),                # Param 1: Actuator value (for the actuator specified in Index)
+            float(0),       # Param 2: Unused
+            float('nan'),       # Param 3: Unused
+            float('nan'),       # Param 4: Unused
+            float('nan'),       # Param 5: Unused
+            float('nan'),       # Param 6: Unused
+            0                   # Param 7: Index (0-based, so 3 = 4th actuator)
+        )
+    elif CLIENT_TYPE == "MASTER":
         mav_controller.set_servo(SERVO_LEFT_CHANNEL, STEERING_PWM_CENTER)
         mav_controller.set_servo(SERVO_RIGHT_CHANNEL, STEERING_PWM_CENTER)
-    mav_controller.set_servo(BRUSH_LEFT_CHANNEL, BRUSHED_PWM_CENTER)
-    mav_controller.set_servo(BRUSH_RIGHT_CHANNEL, BRUSHED_PWM_CENTER)
-    mav_controller.rc_channels_override_send(THROTTLE_PWM_CENTER, THROTTLE_PWM_CENTER)
+        mav_controller.set_servo(BRUSH_LEFT_CHANNEL[CLIENT_TYPE], BRUSHED_PWM_CENTER)
+        mav_controller.set_servo(BRUSH_RIGHT_CHANNEL[CLIENT_TYPE], BRUSHED_PWM_CENTER)
+        mav_controller.rc_channels_override_send(THROTTLE_PWM_CENTER, THROTTLE_PWM_CENTER)
 
     light_utils.mode_duty(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], 0)
 
@@ -233,7 +277,7 @@ def command_handler_thread_func():
         except queue.Empty:
             continue
 
-        print(f"[{time.time()}][Command Handler] Parse next command: {next_command}")
+        print(f"[{time.time()}][Command Handler] Parse next command: {next_command.hex()}")
         id = next_command[0:1]
         command_type = rc_utils.get_command_type(next_command[1:2])
 
@@ -302,11 +346,11 @@ def command_handler_thread_func():
                 onoff = int.from_bytes(next_command[9:10], byteorder='little')
                 video = int.from_bytes(next_command[10:11], byteorder='little')
 
-                # print(f"[{time.time()}]Steering Left: {steering_left.hex()}\nThrottle Left: {throttle_left.hex()}\nSteering Right: {steering_right.hex()}\nThrottle Right: {throttle_right.hex()}\n-EOF")
-                # print(f"[{time.time()}]Brush Dir: {brush_dir}, {brush_speed}")
-                # print(f"[{time.time()}]Light: {light_pct}")
-                # print(f"[{time.time()}]onoff: {onoff}")
-                # print(f"[{time.time()}]video: {video}")
+                print(f"[{time.time()}]Steering Left: {steering_left.hex()}\nThrottle Left: {throttle_left.hex()}\nSteering Right: {steering_right.hex()}\nThrottle Right: {throttle_right.hex()}\n-EOF")
+                print(f"[{time.time()}]Brush Dir: {brush_dir}, {brush_speed}")
+                print(f"[{time.time()}]Light: {light_pct}")
+                print(f"[{time.time()}]onoff: {onoff}")
+                print(f"[{time.time()}]video: {video}")
 
                 if video:
                     if not camera_recorder.is_running:
@@ -317,10 +361,31 @@ def command_handler_thread_func():
                         camera_recorder.update()
 
                 if onoff:
-                    if HAVE_PIXHAWK:
-                        if not mav_controller.is_armed:
-                            print("Arming the vehicle...")
-                            mav_controller.arm()
+                    if CLIENT_TYPE == "MASTER":
+                        if HAVE_PIXHAWK:
+                            if not mav_controller.is_armed:
+                                print("Arming the vehicle...")
+                                mav_controller.arm()
+                    elif CLIENT_TYPE == "SLAVE":
+                    #     hb = mav_master.recv_match(type='HEARTBEAT', blocking=False)
+                    #     is_armed = hb.base_mode & 128  # MAV_MODE_FLAG_SAFETY_ARMED
+                    #     print(f"OKK OKOKOKO: {is_armed}")
+
+                        # Parameters for PX4 Manual Mode
+                        base_mode = mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED  # Value: 1
+                        main_mode = 1  # 1 corresponds to PX4 Manual main mode
+                        sub_mode = 0   # Sub-mode is 0 for manual
+
+                        mav_master.mav.command_long_send(
+                            mav_master.target_system,
+                            mav_master.target_component,
+                            mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+                            0,  # confirmation
+                            base_mode,
+                            main_mode,
+                            sub_mode,
+                            0, 0, 0, 0  # unused parameters 4-7
+                        )
 
                     update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct)
                 else:
@@ -370,7 +435,7 @@ def update_manual_control(steering_left, throttle_left, steering_right, throttle
 
     # Light
     uvc_current_duty = int.from_bytes(light_pct, byteorder='little')
-    uvc_current_duty = rc_utils.percent_to_range(uvc_current_duty, UVC_LIGHT_MIN, UVC_LIGHT_MAX)
+    uvc_current_duty = rc_utils.percent_to_range(uvc_current_duty, UVC_LIGHT_MIN[CLIENT_TYPE], UVC_LIGHT_MAX[CLIENT_TYPE])
     print(f"[{time.time()}]UVC light: {uvc_current_duty}")
 
     # if UVC_LIGHT_LAST_DUTY != uvc_current_duty:
@@ -380,28 +445,72 @@ def update_manual_control(steering_left, throttle_left, steering_right, throttle
     light_utils.mode_duty(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], uvc_current_duty)
 
     if HAVE_PIXHAWK:
-        # Send the mapped raw PWM values directly
-        mav_master.mav.rc_channels_override_send(
-            mav_master.target_system,
-            mav_master.target_component,
-            throttle_left_pwm,     # chan1
-            0,                # chan2
-            throttle_right_pwm,     # chan3
-            0,                # chan4
-            0,                # chan5
-            0,                # chan6
-            0,                # chan7
-            0                 # chan8
-        )
+        if CLIENT_TYPE == "MASTER":
+            # Send the mapped raw PWM values directly
+            mav_master.mav.rc_channels_override_send(
+                mav_master.target_system,
+                mav_master.target_component,
+                throttle_left_pwm,     # chan1
+                0,                # chan2
+                throttle_right_pwm,     # chan3
+                0,                # chan4
+                0,                # chan5
+                0,                # chan6
+                0,                # chan7
+                0                 # chan8
+            )
 
-        if CLIENT_TYPE == "SLAVE":
-            # Set servo
-           mav_controller.set_servo(SERVO_LEFT_CHANNEL, steering_left_pwm)
-           mav_controller.set_servo(SERVO_RIGHT_CHANNEL, steering_right_pwm)
+            # Set Brushed
+            mav_controller.set_servo(BRUSH_LEFT_CHANNEL[CLIENT_TYPE], left_brush_pwm)
+            mav_controller.set_servo(BRUSH_RIGHT_CHANNEL[CLIENT_TYPE], right_brush_pwm)
+        elif CLIENT_TYPE == "SLAVE":
+            # Map throttle_left_pwm (1000-2000) to manual_control x (-1000 to 1000)
+            # Center is 1500, forward is < 1500 (negative x), backward is > 1500 (positive x)
+            x_manual = int(((throttle_right_pwm - THROTTLE_PWM_CENTER) / (THROTTLE_PWM_MAX - THROTTLE_PWM_CENTER)) * 1000)
+            
+            # Map steering to manual_control y (-1000 to 1000)
+            # Average the left and right steering
+            y_manual = int(((steering_right_pwm - STEERING_PWM_CENTER) / (STEERING_PWM_MAX - STEERING_PWM_CENTER)) * 1000)
+            
+            # For throttle z, use a fixed value or map from your throttle
+            # Here using 500 as middle throttle (0-1000 range)
+            z_manual = left_brush_pwm - 1500
+            
+            # Yaw rate (not used in your original code)
+            # Map from 1000 to 2000 -> -1000 to 1000
+            r_manual = steering_left_pwm - 1500
+            
+            print(f"MANUAL_CONTROL: x={x_manual}, y={y_manual}, z={z_manual}, r={r_manual}")
+            
+            # Send manual control
+            mav_master.mav.manual_control_send(
+                mav_master.target_system,
+                x_manual,  # pitch (forward/back)
+                y_manual,  # roll (left/right)
+                z_manual,  # throttle
+                r_manual,  # yaw
+                0          # buttons
+            )
 
-        # Set Brushed
-        mav_controller.set_servo(BRUSH_LEFT_CHANNEL, left_brush_pwm)
-        mav_controller.set_servo(BRUSH_RIGHT_CHANNEL, right_brush_pwm)
+            # Normalize left throttle and both brushes to -1..1
+            left_brush_norm = rc_utils.pwm_to_unit(left_brush_pwm, BRUSHED_PWM_CENTER, BRUSH_PWM_MIN, BRUSH_PWM_MAX)
+            right_brush_norm = rc_utils.pwm_to_unit(right_brush_pwm, BRUSHED_PWM_CENTER, BRUSH_PWM_MIN, BRUSH_PWM_MAX)
+
+            mav_master.mav.command_long_send(
+                mav_master.target_system,
+                mav_master.target_component,
+                187,                # Command ID
+                0,                  # Confirmation
+                float(left_brush_norm),                # Param 1: Actuator value (for the actuator specified in Index)
+                float(right_brush_norm),       # Param 2: Unused
+                float('nan'),       # Param 3: Unused
+                float('nan'),       # Param 4: Unused
+                float('nan'),       # Param 5: Unused
+                float('nan'),       # Param 6: Unused
+                0                   # Param 7: Index (0-based, so 3 = 4th actuator)
+            )
+
+
 
 # Main Function
 if __name__ == "__main__":
@@ -455,7 +564,7 @@ if __name__ == "__main__":
             time.sleep(1)  # Wait for a moment to ensure the vehicle is armed
 
     # Init lights
-    light_utils.mode_freq(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], PWM_PIN_MAP[UVC_LIGHT_PIN][1], UVC_LIGHT_FREQ)
+    light_utils.mode_freq(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], PWM_PIN_MAP[UVC_LIGHT_PIN][1], UVC_LIGHT_FREQ[CLIENT_TYPE])
 
     # Init sensor subscriber
     start_sensor_subscriber()
@@ -474,27 +583,35 @@ if __name__ == "__main__":
     # Parse the command
     try:
         while True:
+            # Always evaluate the watchdog, not only when no frame arrives.
+            update_command_watchdog()
+
             # Receive lora thread
-            received_data = rc_utils.read_frame(ser, MESSAGE_ID + ID, rc_utils.INQUERY_PAYLOAD_LEN)
-            if received_data is None:
-                update_command_watchdog()
+            frame = rc_utils.read_frame(
+                ser,
+                FRAME_HEADER,
+                rc_utils.INQUERY_PAYLOAD_LEN,
+                True
+            )
+            # print(f"received: {frame.hex()}")
+            if frame is None:
                 continue
 
-            # Really received new command
-            # print("[Lora] Received new command")
-            # print(received_data)
+            # Drop only the 0xAA sync byte -> [ID, CMD, LX, LY, RX, RY, dir, spd, light, onoff, video]
+            received_data = frame[1:]
+            print(received_data.hex())
 
-            # Parse data
-            id = received_data[0:1]
-            command_type = received_data[1:2]
-            # print(f"id: {id}")
-            # print(f"command type: {command_type}, {rc_utils.get_command_type(command_type).name}")
+            id = received_data[0]
+            command_type = received_data[1]
+            print(f"id: {id}")
+            print(f"command type: {command_type}")
 
-            # Only manual-control frames should refresh the heartbeat/watchdog.
-            if command_type == rc_utils.COMMANDS.MANUAL_CONTROL:
-                mark_manual_control_received()
-            else:
-                mark_command_received()
+            # Not addressed to us: ignore completely, do NOT refresh the heartbeat.
+            if id != ID[CLIENT_TYPE]:
+                continue
+
+            # Any command addressed to us refreshes the receive-command heartbeat.
+            mark_command_received()
 
             # Added to command queue
             command_queue.put(received_data)
