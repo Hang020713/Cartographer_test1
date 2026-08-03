@@ -4,9 +4,9 @@ import os
 import serial.tools.list_ports
 from enum import IntEnum
 
-INQUERY_PAYLOAD_LEN = 11
+INQUERY_PAYLOAD_LEN = 12
 STATUS_PAYLOAD_LEN = 22
-# STATUS_PAYLOAD_LEN = 4 
+# STATUS_PAYLOAD_LEN = 4
 
 class COMMANDS(IntEnum):
     ERROR = -1
@@ -85,6 +85,10 @@ def percent_to_pwm(
     if pct < 0:
         return int(round(pwm_center + (pct / 100.0) * (pwm_center - pwm_min)))
     return int(round(pwm_center + (pct / 100.0) * (pwm_max - pwm_center)))
+
+def percent_to_range(pct: int, out_min: int, out_max: int) -> int:
+    pct = max(0, min(100, pct))
+    return int(round(out_min + (pct / 100.0) * (out_max - out_min)))
 
 def read_frame(ser, start_bytes, payload_length, include_start_bytes=False):
     """
@@ -189,7 +193,7 @@ def send_config_command(ser, command=None, wait_time=1, end_char='\n'):
     # AT+rf_config=16,0,4,12,0,0,4
     config_command = "AT+rf_config=16,1,4,7,0,0,4"
     entm_command = "AT+ENTM"
-    
+
     try:
         print(f"Sending command: {config_command}")
         ser.write((config_command + end_char).encode())
@@ -202,7 +206,7 @@ def send_config_command(ser, command=None, wait_time=1, end_char='\n'):
         time.sleep(wait_time)
         response = ser.read(ser.in_waiting)
         print(response)
-        
+
         # return response.decode('utf-8', errors='ignore')
         # TODO: fix this
         return "OK"
@@ -226,7 +230,7 @@ def send_at_command(ser, command, wait_time=1, end_char='\n'):
 def send_msg(ser, msg, wait_time=1, end_char='\n'):
     """
     Send a message over an active serial connection and return the response.
-    AT+RF_SEND=<Cnts>,<Interval>, <Len> 
+    AT+RF_SEND=<Cnts>,<Interval>, <Len>
     """
     CNTS = 1
     INTERVAL = 0
@@ -259,7 +263,7 @@ def send_bytes(ser, byte_data, wait_time=1, end_char='\n', read_response=True, d
 
     try:
         # rf_send_command = f"AT+rf_send={CNTS},{INTERVAL},{LEN}"
-        
+
         # if debug:
         #     print(f"Sending command: {rf_send_command}")
 
@@ -268,7 +272,7 @@ def send_bytes(ser, byte_data, wait_time=1, end_char='\n', read_response=True, d
         # print(f"[{time.time()}]: Start sleep")
         # time.sleep(0.05)    # 10 ms
         # print(f"[{time.time()}]: Done sleep")
-        
+
         # print(f"[{time.time()}]: Start writing data")
         ser.write(byte_data)
         # print(f"[{time.time()}]: done writing data")

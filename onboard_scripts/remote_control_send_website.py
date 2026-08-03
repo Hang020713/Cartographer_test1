@@ -13,9 +13,9 @@ except Exception:
     sensor_utils = None
 
 # Debug parameter
-HAVE_JOYSTICK=True
+HAVE_JOYSTICK=False
 DEBUG_JOYSTICK=False
-WEB_DASHBOARD=True          # NEW: enable the web dashboard
+WEB_DASHBOARD=False          # NEW: enable the web dashboard
 WEB_HOST="0.0.0.0"          # NEW
 WEB_PORT=5050               # NEW
 
@@ -52,6 +52,7 @@ mapped_brush_speed = 0 # 0 - 100
 mapped_light_pct = 0
 mapped_onoff = 0
 mapped_client = 0
+mapped_video = 0
 
 # Threads
 program_stop_event = threading.Event()
@@ -211,7 +212,7 @@ DASHBOARD_HTML = """
             height: 100%;
             object-fit: cover;
             transition: transform 0.3s ease;
-            
+
             /* Prevents blurriness during upscale/zoom */
             image-rendering: -moz-crisp-edges; /* Firefox */
             image-rendering: pixelated;        /* Chrome, Edge, Safari */
@@ -544,7 +545,7 @@ def map_joystick_value(x):
     return int(max(0, min(255, (128 / 49) * x + 127 - (128 / 49) * 53)))
 
 def read_joystick():
-    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_client
+    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_client, mapped_video
 
     if input_ser.in_waiting > 0:
         received_data = rc_utils.read_frame(input_ser, b"\x0a\x0d", JOYSTICK_BIT_LEN, include_start_bytes=True)
@@ -580,6 +581,8 @@ def read_joystick():
             # 00001000 and 00000100
             mapped_client = (button_data1 >> 2) & 1
 
+            mapped_video = (button_data2 >> 4) & 1
+
         update_latest_joystick_status()
 
         if DEBUG_JOYSTICK:
@@ -587,15 +590,17 @@ def read_joystick():
             print(f"[{time.time()}]Brush Dir: {mapped_brush_dir}), speed: {mapped_brush_speed}({brush_speed})")
             print(f"[{time.time()}]Light: {mapped_light_pct}({light_pct})")
             print(f"[{time.time()}]OnOff: {mapped_onoff}")
+            print(f"[{time.time()}]Client: {mapped_client}, Video: {mapped_video}")
 
 def send_manual_control(read_response=False):
-    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff
+    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_video
 
     # LX, LY, RX, RY, Brush dir, Brush speed, light
-    byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.MANUAL_CONTROL, 
+    byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.MANUAL_CONTROL,
                        mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y,
-                       mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff
+                       mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_video
                     ])
+    print(f"[{time.time()}]{mapped_left_y}")
     response = rc_utils.send_bytes(send_ser, byte_data, wait_time=0.3, read_response=read_response)
     return response
 
@@ -613,7 +618,7 @@ if __name__ == "__main__":
         if INPUT_BAUDRATE is None:
             INPUT_BAUDRATE = rc_utils.select_baudrate(115200)
         print(f"Selected baudrate: {INPUT_BAUDRATE}")
-        
+
         # Select the serial port for receiving data
         if INPUT_PORT is None:
             INPUT_PORT = rc_utils.select_serial_port(INPUT_PORT)
@@ -736,7 +741,7 @@ if __name__ == "__main__":
 #                         flag = False
 
 #             elif choice == "3":
-#                 byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.REQUEST_STATUS, 
+#                 byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.REQUEST_STATUS,
 #                                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 #                                    ])
 #                 response = rc_utils.send_bytes(send_ser, byte_data, read_response=False)

@@ -9,6 +9,8 @@ import sensor_utils
 import rclpy
 
 HAVE_PIXHAWK = True
+CLIENT_TYPE = "MASTER"
+#CLIENT_TYPE = "SLAVE"
 
 # Functions Parameters
 INPUT_PORT=None  # Serial port to be selected by the user
@@ -38,16 +40,19 @@ STEERING_PWM_CENTER = 1500
 BRUSH_PWM_MIN = 1000
 BRUSH_PWM_MAX = 2000
 BRUSHED_PWM_CENTER = 1500
-BRUSH_LEFT_CHANNEL=4
-BRUSH_RIGHT_CHANNEL=8
+BRUSH_LEFT_CHANNEL=2
+BRUSH_RIGHT_CHANNEL=1
 
 PWM_PIN_MAP = {
     "18": ("2", "a3"),
     "19": ("3", "a3"),
 }
 UVC_LIGHT_PIN = "19"
-UVC_LIGHT_FREQ = 2000
+UVC_LIGHT_FREQ = 500
 UVC_LIGHT_LAST_DUTY = -1
+UVC_LIGHT_MIN = 55
+UVC_LIGHT_MAX = 95
+UVC_LIGHT_CENTER = 75
 
 # Camera
 camera_recorder = None
@@ -189,8 +194,8 @@ def disable_mavlink_output():
         return
 
     print("Stopping MAVLink output to protect the vehicle.")
-    mav_controller.set_servo(SERVO_LEFT_CHANNEL, STEERING_PWM_CENTER)
-    mav_controller.set_servo(SERVO_RIGHT_CHANNEL, STEERING_PWM_CENTER)
+    # mav_controller.set_servo(SERVO_LEFT_CHANNEL, STEERING_PWM_CENTER)
+    # mav_controller.set_servo(SERVO_RIGHT_CHANNEL, STEERING_PWM_CENTER)
     mav_controller.set_servo(BRUSH_LEFT_CHANNEL, BRUSHED_PWM_CENTER)
     mav_controller.set_servo(BRUSH_RIGHT_CHANNEL, BRUSHED_PWM_CENTER)
     mav_controller.rc_channels_override_send(THROTTLE_PWM_CENTER, THROTTLE_PWM_CENTER)
@@ -259,13 +264,13 @@ def command_handler_thread_func():
                 humidity_bytes = [(humidity_raw >> 8) & 0xFF, humidity_raw & 0xFF]
                 temperature_bytes = [(temperature_raw >> 8) & 0xFF, temperature_raw & 0xFF]
 
-
                 # Send status
                 byte_data = build_status_payload(sensor_readings)
                 response = rc_utils.send_bytes(ser, byte_data, read_response=False)
 
             case rc_utils.COMMANDS.MANUAL_CONTROL:
                 print("Got manual control")
+                print(f"Raw command bytes (len={len(next_command)}): {next_command.hex()}")  # DEBUG
 
                 onoff = int.from_bytes(next_command[2:3], byteorder='little')
 
@@ -295,16 +300,27 @@ def command_handler_thread_func():
                 brush_speed = next_command[7:8]
                 light_pct = next_command[8:9]
                 onoff = int.from_bytes(next_command[9:10], byteorder='little')
+                video = int.from_bytes(next_command[10:11], byteorder='little')
 
                 print(f"[{time.time()}]Steering Left: {steering_left.hex()}\nThrottle Left: {throttle_left.hex()}\nSteering Right: {steering_right.hex()}\nThrottle Right: {throttle_right.hex()}\n-EOF")
                 print(f"[{time.time()}]Brush Dir: {brush_dir}, {brush_speed}")
                 print(f"[{time.time()}]Light: {light_pct}")
                 print(f"[{time.time()}]onoff: {onoff}")
+                print(f"[{time.time()}]video: {video}")
+
+                if video:
+                    if not camera_recorder.is_running:
+                        print("Starting video recording...")
+                        camera_recorder.start_recording(0, 5, 90)
+                        camera_recorder.start_recording(1, 5, 270)
+                    else:
+                        camera_recorder.update()
 
                 if onoff:
-                    if not mav_controller.is_armed:
-                        print("Arming the vehicle...")
-                        mav_controller.arm()
+                    if HAVE_PIXHAWK:
+                        if not mav_controller.is_armed:
+                            print("Arming the vehicle...")
+                            mav_controller.arm()
 
                     update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct)
                 else:
@@ -354,6 +370,7 @@ def update_manual_control(steering_left, throttle_left, steering_right, throttle
 
     # Light
     uvc_current_duty = int.from_bytes(light_pct, byteorder='little')
+    uvc_current_duty = rc_utils.percent_to_range(uvc_current_duty, UVC_LIGHT_MIN, UVC_LIGHT_MAX)
     print(f"[{time.time()}]UVC light: {uvc_current_duty}")
 
     # if UVC_LIGHT_LAST_DUTY != uvc_current_duty:
@@ -377,9 +394,10 @@ def update_manual_control(steering_left, throttle_left, steering_right, throttle
             0                 # chan8
         )
 
-        # Set servo
-        mav_controller.set_servo(SERVO_LEFT_CHANNEL, steering_left_pwm)
-        mav_controller.set_servo(SERVO_RIGHT_CHANNEL, steering_right_pwm)
+#        if CLIENT_TYPE == "SLAVE":
+            # Set servo
+#            mav_controller.set_servo(SERVO_LEFT_CHANNEL, steering_left_pwm)
+#            mav_controller.set_servo(SERVO_RIGHT_CHANNEL, steering_right_pwm)
 
         # Set Brushed
         mav_controller.set_servo(BRUSH_LEFT_CHANNEL, left_brush_pwm)
@@ -406,7 +424,7 @@ if __name__ == "__main__":
     # ser = rc_utils.init_serial_connection(INPUT_PORT, INPUT_BAUDRATE)
     # if ser is None:
     #     raise SystemExit(1)
-    ser = rc_utils.init_serial_connection('/dev/ttyAMA1', 4800)
+    ser = rc_utils.init_serial_connection('/dev/ttyAMA1', 115200)
 
     # Configure the device
     response = rc_utils.send_config_command(ser, end_char=END_CHAR)
