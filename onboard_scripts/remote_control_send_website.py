@@ -588,10 +588,10 @@ def read_joystick():
             mapped_brush_speed = 100 if brush_speed > 100 else brush_speed
             mapped_light_pct = 100 if light_pct > 100 else light_pct
 
-            mapped_onoff = (button_data2 >> 2) & 3
+            mapped_onoff = (button_data2 >> 2) & 1
 
             # 00001000 and 00000100
-            mapped_client = (button_data1 >> 2) & 1
+            mapped_client = (button_data1 >> 2) & 3
             ID = mapped_client
 
             mapped_video = (button_data2 >> 4) & 1
