@@ -194,6 +194,7 @@ def mark_manual_control_received():
 
 def update_command_watchdog():
     global last_command_time, command_link_active
+    # print(f"[watchdog] {time.time() - last_command_time:.2f}s since last own-ID command, active={command_link_active}")
 
     if last_command_time is None:
         last_command_time = time.time()
@@ -272,6 +273,8 @@ def command_handler_thread_func():
     global onoff, last_onoff
 
     while not program_stop_event.is_set():
+        update_command_watchdog()
+
         try:
             next_command = command_queue.get(timeout=0.1)
         except queue.Empty:
@@ -584,7 +587,7 @@ if __name__ == "__main__":
     try:
         while True:
             # Always evaluate the watchdog, not only when no frame arrives.
-            update_command_watchdog()
+            # update_command_watchdog()
 
             # Receive lora thread
             frame = rc_utils.read_frame(

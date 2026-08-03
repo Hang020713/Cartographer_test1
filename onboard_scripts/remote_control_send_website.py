@@ -99,10 +99,46 @@ latest_status = {
 }
 
 
+def clear_dashboard_state():
+    """Reset the dashboard state so the UI shows empty values when no client is selected."""
+    with status_lock:
+        latest_status.update({
+            "timestamp": None,
+            "mode": None,
+            "mode_status": None,
+            "sensor_channels": [None, None, None, None],
+            "humidity_pct": None,
+            "temperature_c": None,
+            "water_level": None,
+            "discharge_current_a": None,
+            "module_voltage_v": None,
+            "battery_percentage": None,
+            "humidity_raw": None,
+            "temperature_raw": None,
+            "left_joystick_x": None,
+            "left_joystick_y": None,
+            "right_joystick_x": None,
+            "right_joystick_y": None,
+            "brush_direction": None,
+            "brush_speed": None,
+            "light_pct": None,
+            "onoff": None,
+            "selected_client": 0,
+        })
+
+
 def update_latest_status(parsed):
     """Copy parsed status into the shared store for the dashboard."""
     mode = parsed.get("mode")
     mode_status = parsed.get("mode_status")
+
+    with joystick_lock:
+        current_client = mapped_client
+
+    if current_client == 0:
+        clear_dashboard_state()
+        return
+
     with status_lock:
         latest_status["timestamp"] = time.time()
         latest_status["mode"] = mode.name if hasattr(mode, "name") else mode
@@ -133,6 +169,10 @@ def update_latest_joystick_status():
         light_pct = mapped_light_pct
         onoff = mapped_onoff
         selected_client = mapped_client
+
+    if selected_client == 0:
+        clear_dashboard_state()
+        return
 
     with status_lock:
         latest_status["timestamp"] = time.time()
