@@ -4,8 +4,8 @@ import os
 import serial.tools.list_ports
 from enum import IntEnum
 
-INQUERY_PAYLOAD_LEN = 11
-STATUS_PAYLOAD_LEN = 23
+INQUERY_PAYLOAD_LEN = 12
+STATUS_PAYLOAD_LEN = 22
 # STATUS_PAYLOAD_LEN = 4
 
 class COMMANDS(IntEnum):

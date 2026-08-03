@@ -4,6 +4,12 @@ import signal
 import os
 from datetime import datetime
 
+# FFMPEG transpose values:
+# 0: 90° counter-clockwise & vertical flip
+# 1: 90° clockwise (Most Common)
+# 2: 90° counter-clockwise
+# 3: 90° clockwise & vertical flip
+
 class CameraRecorder:
     def __init__(self):
         self.process = None
@@ -12,18 +18,18 @@ class CameraRecorder:
         self.is_running = False
         self.filename = None
     
-    def _generate_filename(self):
+    def _generate_filename(self, camera):
         """Generate filename in DDMMYYYY_HH_MM_SS format"""
         now = datetime.now()
-        return now.strftime("%d%m%Y_%H_%M_%S") + ".mp4"
+        return now.strftime("%d%m%Y_%H_%M_%S") + "_cam" + str(camera) + ".mp4"
     
-    def start_recording(self, camera, duration_seconds):
+    def start_recording(self, camera, duration_seconds, orientation=0):
         self.duration = duration_seconds
         self.start_time = time.time()
         self.is_running = True
-        self.filename = self._generate_filename()
+        self.filename = self._generate_filename(camera)
         
-        command = f"rpicam-vid --camera {camera} -t {duration_seconds * 1000} --codec yuv420 --width 1280 --height 720 -o - | ffmpeg -f rawvideo -pix_fmt yuv420p -s 1280x720 -framerate 30 -i - -c:v libx264 -preset veryfast {self.filename}"
+        command = f"rpicam-vid --camera {camera} -t {duration_seconds * 1000} --codec yuv420 --width 1280 --height 720 -o - | ffmpeg -f rawvideo -pix_fmt yuv420p -s 1280x720 -framerate 30 -i - -vf \"transpose={orientation}\" -c:v libx264 -preset veryfast {self.filename}"
         print(f"command: {command}")
         print(f"Output file: {self.filename}")
         

@@ -40,8 +40,8 @@ STEERING_PWM_CENTER = 1500
 BRUSH_PWM_MIN = 1000
 BRUSH_PWM_MAX = 2000
 BRUSHED_PWM_CENTER = 1500
-BRUSH_LEFT_CHANNEL=1
-BRUSH_RIGHT_CHANNEL=2
+BRUSH_LEFT_CHANNEL=2
+BRUSH_RIGHT_CHANNEL=1
 
 PWM_PIN_MAP = {
     "18": ("2", "a3"),
@@ -92,8 +92,7 @@ def start_sensor_subscriber():
 
         sensor_subscriber = sensor_utils.SensorSubscriber()
         sensor_spin_thread = threading.Thread(
-            target=sensor_utils.spin_forever,      # was: lambda: rclpy.spin(...)
-            args=(sensor_subscriber,),
+            target=lambda: rclpy.spin(sensor_subscriber),
             daemon=True,
             name="sensor_subscriber"
         )
@@ -271,6 +270,7 @@ def command_handler_thread_func():
 
             case rc_utils.COMMANDS.MANUAL_CONTROL:
                 print("Got manual control")
+                print(f"Raw command bytes (len={len(next_command)}): {next_command.hex()}")  # DEBUG
 
                 onoff = int.from_bytes(next_command[2:3], byteorder='little')
 
@@ -311,13 +311,16 @@ def command_handler_thread_func():
                 if video:
                     if not camera_recorder.is_running:
                         print("Starting video recording...")
-                        camera_recorder.start_recording(0, 5)
-                        camera_recorder.start_recording(1, 5)
+                        camera_recorder.start_recording(0, 5, 90)
+                        camera_recorder.start_recording(1, 5, 270)
+                    else:
+                        camera_recorder.update()
 
                 if onoff:
-                    if not mav_controller.is_armed:
-                        print("Arming the vehicle...")
-                        mav_controller.arm()
+                    if HAVE_PIXHAWK:
+                        if not mav_controller.is_armed:
+                            print("Arming the vehicle...")
+                            mav_controller.arm()
 
                     update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct)
                 else:
