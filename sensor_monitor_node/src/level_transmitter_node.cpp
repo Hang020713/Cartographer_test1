@@ -16,6 +16,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float64.hpp"
+#include "std_srvs/srv/trigger.hpp"
 
 using namespace std::chrono_literals;
 
@@ -159,11 +160,17 @@ public:
         load_parameters();
         open_serial_port();
         create_publishers();
+
+        trigger_service_ = create_service<std_srvs::srv::Trigger>(
+            "~/trigger_read",
+            std::bind(&LevelTransmitterNode::handle_trigger_read, this,
+                    std::placeholders::_1, std::placeholders::_2));
+
         read_sensor_metadata();
 
-        timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(read_interval_ms_),
-            std::bind(&LevelTransmitterNode::timer_callback, this));
+        // timer_ = this->create_wall_timer(
+        //     std::chrono::milliseconds(read_interval_ms_),
+        //     std::bind(&LevelTransmitterNode::timer_callback, this));
 
         RCLCPP_INFO(this->get_logger(),
                     "Level Transmitter node started.  port=%s  baud=%d  slave_id=%d  unit=%s  mode=%s",
@@ -648,6 +655,27 @@ private:
         return true;
     }
 
+    void handle_trigger_read(
+        const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+        std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+    {
+        double value = 0.0;
+        bool ok = use_float_mode_ ? read_float_value(value)
+                                : read_integer_value(value);
+
+        if (ok && sanitize_measurement(value)) {
+            auto msg = std::make_unique<std_msgs::msg::Float64>();
+            msg->data = value;
+            level_pub_->publish(std::move(msg));
+            
+            response->success = true;
+            response->message = "Level read complete";
+        } else {
+            response->success = false;
+            response->message = "Level read failed";
+        }
+    }
+
     // ══════════════════════════════════════════════════════════════════════
     // Member variables
     // ══════════════════════════════════════════════════════════════════════
@@ -670,6 +698,7 @@ private:
     // ROS
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr level_pub_;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr trigger_service_;
     std::string topic_name_;
     int read_interval_ms_{2000};
 };

@@ -3,11 +3,12 @@
  * Publishes:
  *   ~/battery      (sensor_msgs/msg/BatteryState)
  *
+ * Services:
+ *   ~/trigger_read (std_srvs/srv/Trigger) - Trigger a single read cycle
+ *
  * Parameters:
  *   serial_port     (string)  default "/dev/ttyAMA0"
  *   slave_id        (int)     default 1     (must be 1..16)
- *   poll_period     (double)  default 1.0   seconds
- *   error_period    (double)  default 2.0   seconds (gap after an error)
  *   resp_timeout_ms (int)     default 500
  *   frame_id        (string)  default "bms"
  */
@@ -16,8 +17,6 @@
 #include <cstdint>
 #include <cstring>
 #include <vector>
-#include <thread>
-#include <atomic>
 #include <chrono>
 
 #include <fcntl.h>
@@ -30,6 +29,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/battery_state.hpp"
+#include "std_srvs/srv/trigger.hpp"
 
 using namespace std::chrono_literals;
 
@@ -134,13 +134,17 @@ public:
         // ----- Parameters -----
         serial_port_     = declare_parameter<std::string>("serial_port", "/dev/ttyAMA3");
         slave_id_        = (uint8_t)declare_parameter<int>("slave_id", 1);
-        poll_period_     = declare_parameter<double>("poll_period", 1.0);
-        error_period_    = declare_parameter<double>("error_period", 2.0);
         resp_timeout_ms_ = declare_parameter<int>("resp_timeout_ms", 500);
         frame_id_        = declare_parameter<std::string>("frame_id", "bms");
 
         // ----- Publisher -----
         battery_pub_ = create_publisher<sensor_msgs::msg::BatteryState>("~/battery", 10);
+
+        // ----- Service -----
+        trigger_service_ = create_service<std_srvs::srv::Trigger>(
+            "~/trigger_read",
+            std::bind(&Bms485Node::handle_trigger_read, this,
+                    std::placeholders::_1, std::placeholders::_2));
 
         // ----- Open serial -----
         fd_ = serial_open(serial_port_.c_str());
@@ -151,18 +155,12 @@ public:
             return;
         }
 
-        RCLCPP_INFO(get_logger(), "Polling BMS id %u on %s every %.1f s",
-                    slave_id_, serial_port_.c_str(), poll_period_);
-
-        // ----- Start poll thread -----
-        running_ = true;
-        worker_  = std::thread(&Bms485Node::poll_loop, this);
+        RCLCPP_INFO(get_logger(), "BMS node ready on %s (slave_id=%u, trigger-based polling)",
+                    serial_port_.c_str(), slave_id_);
     }
 
     ~Bms485Node() override
     {
-        running_ = false;
-        if (worker_.joinable()) worker_.join();
         if (fd_ >= 0) close(fd_);
     }
 
@@ -300,14 +298,12 @@ private:
     {
         auto stamp = now();
 
-        // Standard BatteryState
         sensor_msgs::msg::BatteryState bat;
         bat.header.stamp = stamp;
         bat.header.frame_id = frame_id_;
         bat.voltage    = data.module_voltage;
-        // current: positive = charging, negative = discharging (ROS convention)
-        bat.current    = data.charge_current - data.discharge_current;  //mAh
-        bat.charge     = data.total_capacity;   
+        bat.current    = data.charge_current - data.discharge_current;
+        bat.charge     = data.total_capacity / 1000.0f;  // Convert mAh to Ah
         bat.percentage = data.soc;
         bat.present    = data.module_valid;
         bat.power_supply_status =
@@ -323,106 +319,80 @@ private:
         battery_pub_->publish(bat);
     }
 
-    // Interruptible sleep so shutdown is responsive.
-    void interruptible_sleep(double seconds)
+    // ---------------- trigger service handler ----------------
+    void handle_trigger_read(
+        const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+        std::shared_ptr<std_srvs::srv::Trigger::Response> response)
     {
-        auto end = std::chrono::steady_clock::now() +
-                   std::chrono::duration<double>(seconds);
-        while (running_ && rclcpp::ok() &&
-               std::chrono::steady_clock::now() < end) {
-            std::this_thread::sleep_for(50ms);
+        BmsData data;
+        bool success = perform_single_poll(data);
+        
+        if (success) {
+            publish(data);
+            response->success = true;
+            response->message = "BMS poll complete";
+        } else {
+            response->success = false;
+            response->message = "BMS poll failed";
         }
     }
 
-    // ---------------- main poll loop (runs in its own thread) ----------------
-    void poll_loop()
+    bool perform_single_poll(BmsData &data)
     {
         uint8_t tx[TOTAL_COMMAND][8];
-        int     txlen[TOTAL_COMMAND] = {
+        int txlen[TOTAL_COMMAND] = {
             build_query_command(tx[0], slave_id_, 0x0004, 8),
             build_query_command(tx[1], slave_id_, 0x0026, 8),
             build_query_command(tx[2], slave_id_, 0x0030, 6)
         };
 
-        while (running_ && rclcpp::ok()) {
-            BmsData data;
-            bool cycle_ok = true;
+        for (uint8_t i = 0; i < TOTAL_COMMAND; i++) {
+            tcflush(fd_, TCIFLUSH);
 
-            for (uint8_t i = 0; i < TOTAL_COMMAND && running_; i++) {
-                tcflush(fd_, TCIFLUSH);
-
-                if (rs485_send(tx[i], txlen[i]) < 0) {
-                    RCLCPP_ERROR(get_logger(), "send query failed: %s", strerror(errno));
-                    cycle_ok = false;
-                    break;
-                }
-
-                uint8_t rx[256];
-                int n = read_response(rx, sizeof(rx), resp_timeout_ms_);
-                if (n <= 0) {
-                    RCLCPP_WARN(get_logger(), "cmd %u: no response (timeout)", i);
-                    cycle_ok = false;
-                    interruptible_sleep(error_period_);
-                    continue;
-                }
-                if (n < 5) {
-                    RCLCPP_WARN(get_logger(), "cmd %u: frame too short (%d)", i, n);
-                    cycle_ok = false;
-                    interruptible_sleep(error_period_);
-                    continue;
-                }
-
-                uint16_t calc = bms_crc16(rx, n - 2);
-                uint16_t recv = (rx[n - 1] << 8) | rx[n - 2];  // LSB then MSB on wire
-                if (calc != recv) {
-                    RCLCPP_WARN(get_logger(), "cmd %u: CRC mismatch (calc=%04X recv=%04X)",
-                                i, calc, recv);
-                    cycle_ok = false;
-                    interruptible_sleep(error_period_);
-                    continue;
-                }
-
-                if (rx[1] == (0x03 | 0x80)) {           // abnormal response
-                    const char *reason;
-                    switch (rx[2]) {
-                        case 0x01: reason = "Slave ID out of range"; break;
-                        case 0x02: reason = "command type error";    break;
-                        case 0x03: reason = "CRC error";             break;
-                        default:   reason = "unknown";               break;
-                    }
-                    RCLCPP_WARN(get_logger(), "cmd %u: BMS error 0x%02X (%s)", i, rx[2], reason);
-                    cycle_ok = false;
-                } else if (rx[1] == 0x03) {             // normal response
-                    uint16_t reg_count  = (rx[2] << 8) | rx[3];
-                    int      data_bytes = reg_count * 2;
-                    if (data_bytes > n - 5) data_bytes = n - 5; // guard
-                    decode_status_block(i, &rx[4], data_bytes, data);
-                } else {
-                    RCLCPP_WARN(get_logger(), "cmd %u: unexpected command byte 0x%02X", i, rx[1]);
-                    cycle_ok = false;
-                }
+            if (rs485_send(tx[i], txlen[i]) < 0) {
+                RCLCPP_ERROR(get_logger(), "send query failed: %s", strerror(errno));
+                return false;
             }
 
-            if (cycle_ok && running_ && rclcpp::ok())
-                publish(data);
+            uint8_t rx[256];
+            int n = read_response(rx, sizeof(rx), resp_timeout_ms_);
+            if (n <= 0) {
+                RCLCPP_WARN(get_logger(), "cmd %u: no response", i);
+                return false;
+            }
+            if (n < 5) {
+                RCLCPP_WARN(get_logger(), "cmd %u: frame too short (%d)", i, n);
+                return false;
+            }
 
-            interruptible_sleep(poll_period_);
+            uint16_t calc = bms_crc16(rx, n - 2);
+            uint16_t recv = (rx[n - 1] << 8) | rx[n - 2];
+            if (calc != recv) {
+                RCLCPP_WARN(get_logger(), "cmd %u: CRC mismatch", i);
+                return false;
+            }
+
+            if (rx[1] == 0x03) {
+                uint16_t reg_count = (rx[2] << 8) | rx[3];
+                int data_bytes = reg_count * 2;
+                if (data_bytes > n - 5) data_bytes = n - 5;
+                decode_status_block(i, &rx[4], data_bytes, data);
+            } else {
+                return false;
+            }
         }
+        return true;
     }
 
     // ---------------- members ----------------
     int         fd_ = -1;
     std::string serial_port_;
     uint8_t     slave_id_;
-    double      poll_period_;
-    double      error_period_;
     int         resp_timeout_ms_;
     std::string frame_id_;
 
-    std::thread       worker_;
-    std::atomic<bool> running_{false};
-
     rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr   battery_pub_;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr trigger_service_;
 };
 
 int main(int argc, char **argv)
