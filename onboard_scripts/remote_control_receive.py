@@ -88,6 +88,7 @@ current_mode = rc_utils.MODES.MANUAL
 current_mode_status = rc_utils.MODE_STATUS.ONGOING
 onoff = 0
 last_onoff = 0
+is_armed = 0
 
 # Command queue
 command_queue = queue.Queue()
@@ -169,7 +170,8 @@ def build_status_payload(sensor_readings):
         *temperature_bytes,
         *discharge_current_bytes,
         *voltage_bytes,
-        *percentage_bytes
+        *percentage_bytes,
+        *water_level_bytes
     ]
     return bytes(payload)
 
@@ -209,6 +211,8 @@ def update_command_watchdog():
 
 
 def disable_mavlink_output():
+    global is_armed
+
     if not HAVE_PIXHAWK or mav_controller is None:
         return
 
@@ -245,6 +249,8 @@ def disable_mavlink_output():
 
     light_utils.mode_duty(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], 0)
 
+    is_armed = False
+
 def map_brush_pwm(brush_dir, brush_speed, side):
     brush_dir_raw = int.from_bytes(brush_dir, byteorder='little')
     brush_speed_raw = int.from_bytes(brush_speed, byteorder='little')
@@ -270,7 +276,7 @@ def map_brush_pwm(brush_dir, brush_speed, side):
     return int(brush_pwm)
 
 def command_handler_thread_func():
-    global onoff, last_onoff
+    global onoff, last_onoff, is_armed
 
     while not program_stop_event.is_set():
         update_command_watchdog()
@@ -358,8 +364,11 @@ def command_handler_thread_func():
                 if video:
                     if not camera_recorder.is_running:
                         print("Starting video recording...")
-                        camera_recorder.start_recording(0, 5, 90)
-                        camera_recorder.start_recording(1, 5, 270)
+                        if CLIENT_TYPE == "MASTER":
+                            camera_recorder.start_recording(0, 5, 180)
+                            camera_recorder.start_recording(1, 5)
+                        elif CLIENT_TYPE == "SLAVE":
+                            camera_recorder.start_recording(0, 5, 180)
                     else:
                         camera_recorder.update()
 
@@ -370,28 +379,53 @@ def command_handler_thread_func():
                                 print("Arming the vehicle...")
                                 mav_controller.arm()
                     elif CLIENT_TYPE == "SLAVE":
-                    #     hb = mav_master.recv_match(type='HEARTBEAT', blocking=False)
-                    #     is_armed = hb.base_mode & 128  # MAV_MODE_FLAG_SAFETY_ARMED
-                    #     print(f"OKK OKOKOKO: {is_armed}")
+                        if not is_armed:
+                            # hb = mav_master.recv_match(type='HEARTBEAT', blocking=False)
+                            # is_armed = hb.base_mode & 128  # MAV_MODE_FLAG_SAFETY_ARMED
 
-                        # Parameters for PX4 Manual Mode
-                        base_mode = mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED  # Value: 1
-                        main_mode = 1  # 1 corresponds to PX4 Manual main mode
-                        sub_mode = 0   # Sub-mode is 0 for manual
+                            mav_master.mav.manual_control_send(
+                                mav_master.target_system,
+                                0,  # pitch (forward/back)
+                                0,  # roll (left/right)
+                                -1000,  # throttle
+                                0,  # yaw
+                                0          # buttons
+                            )
+                            time.sleep(0.1)
 
-                        mav_master.mav.command_long_send(
-                            mav_master.target_system,
-                            mav_master.target_component,
-                            mavutil.mavlink.MAV_CMD_DO_SET_MODE,
-                            0,  # confirmation
-                            base_mode,
-                            main_mode,
-                            sub_mode,
-                            0, 0, 0, 0  # unused parameters 4-7
-                        )
+                            # Parameters for PX4 Manual Mode
+                            base_mode = mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED  # Value: 1
+                            main_mode = 1  # 1 corresponds to PX4 Manual main mode
+                            sub_mode = 0   # Sub-mode is 0 for manual
+
+                            mav_master.mav.command_long_send(
+                                mav_master.target_system,
+                                mav_master.target_component,
+                                mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+                                0,  # confirmation
+                                base_mode,
+                                main_mode,
+                                sub_mode,
+                                0, 0, 0, 0  # unused parameters 4-7
+                            )
+                            time.sleep(0.1)
+
+                            # mav_controller.arm()
+                            mav_master.arducopter_arm()
+                            hb = mav_master.recv_match(type='HEARTBEAT', blocking=True)
+                            is_armed = hb.base_mode & 128  # MAV_MODE_FLAG_SAFETY_ARMED
 
                     update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct)
                 else:
+                    if CLIENT_TYPE == "SLAVE":
+                        mav_master.mav.manual_control_send(
+                            mav_master.target_system,
+                            0,  # pitch (forward/back)
+                            0,  # roll (left/right)
+                            0,  # throttle
+                            0,  # yaw
+                            0          # buttons
+                        )
                     if not (onoff == last_onoff):
                         disable_mavlink_output()
                 last_onoff = onoff
@@ -462,6 +496,12 @@ def update_manual_control(steering_left, throttle_left, steering_right, throttle
                 0,                # chan7
                 0                 # chan8
             )
+
+            # Remap brush pwm, only one direction is allowed
+            if brush_dir == b'\x01':
+                brush_dir = b'\x02'
+            left_brush_pwm = map_brush_pwm(brush_dir, brush_speed, "left")
+            right_brush_pwm = map_brush_pwm(brush_dir, brush_speed, "right")
 
             # Set Brushed
             mav_controller.set_servo(BRUSH_LEFT_CHANNEL[CLIENT_TYPE], left_brush_pwm)
