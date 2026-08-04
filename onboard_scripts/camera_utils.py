@@ -36,8 +36,18 @@ class CameraRecorder:
             print(f"Created recording folder: {FOLDER_PATH}")
         else:
             print(f"Recording folder exists: {FOLDER_PATH}")
+
+        # Anti clockwise
+        rpi_config = ""
+        ffmpeg_config = ""
+        if orientation == 90:
+            ffmpeg_config = "-vf \"transpose=2\""
+        elif orientation == 180:
+            rpi_config = "--rotation 180"
+        elif orientation == 270:
+            ffmpeg_config = "-vf \"transpose=1\""
         
-        command = f"rpicam-vid --camera {camera} -t {duration_seconds * 1000} --codec yuv420 --width 1280 --height 720 -o - | ffmpeg -f rawvideo -pix_fmt yuv420p -s 1280x720 -framerate 30 -i - -c:v libx264 -preset veryfast {FOLDER_PATH}{self.filename}"
+        command = f"rpicam-vid --camera {camera} --autofocus-mode continuous -t {duration_seconds * 1000} --codec yuv420 {rpi_config} --width 1280 --height 720 -o - | ffmpeg -f rawvideo -pix_fmt yuv420p -s 1280x720 -framerate 30 -i - -c:v libx264 {ffmpeg_config} -preset veryfast {FOLDER_PATH}{self.filename}"
         print(f"command: {command}")
         print(f"Output file: {self.filename}")
         
