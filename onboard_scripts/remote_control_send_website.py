@@ -809,7 +809,7 @@ if __name__ == "__main__":
 
             if mapped_reboot_client:
                 # Send reboot command(TODO)
-                rc_utils.send_bytes(send_ser, bytes.fromhex("AA " + ID + " CC 00 00 00 00 00 00 00 00 00"))
+                rc_utils.send_bytes(send_ser, bytes.fromhex(f"AA {ID:02X} CC 00 00 00 00 00 00 00 00 00"))
                 print("[WARNING] SENDING REBOOT COMMAND")
             if mapped_reboot_controller:
                 subprocess.run(["shutdown", "now"])
