@@ -6,7 +6,7 @@ import subprocess
 NODE = "/sys/class/pwm/pwmchip0"
 
 def run_root(cmd):
-    """以 sudo 运行命令,失败返回 False。"""
+    """Run command with sudo, return False on failure."""
     result = subprocess.run(
         ["sudo"] + cmd,
         stdout=subprocess.DEVNULL,
@@ -15,8 +15,8 @@ def run_root(cmd):
     return result.returncode == 0
 
 def sudo_write(path, value):
-    """相当于 `echo value | sudo tee path`。"""
-    # 使用 tee 是为了在没有 root 的 shell 里也能写入受保护的 sysfs 节点
+    """Equivalent to `echo value | sudo tee path`."""
+    # Using tee to write to protected sysfs nodes even without root shell
     proc = subprocess.run(
         ["sudo", "tee", path],
         input=f"{value}\n".encode(),
@@ -26,19 +26,19 @@ def sudo_write(path, value):
     return proc.returncode == 0
 
 def pinctrl_set(pin, func):
-    """设置引脚复用功能。"""
+    """Set pin multiplexing function."""
     run_root(["pinctrl", "set", pin, func])
 
 def pwm_write(channel, attr, value):
-    """向 pwm<channel> 的属性写入值,失败即退出。"""
+    """Write value to pwm<channel> attribute, exit on failure."""
     path = os.path.join(NODE, f"pwm{channel}", attr)
     if not sudo_write(path, value):
-        print(f"错误: 无法写入{attr}")
+        print(f"Error: unable to write to {attr}")
         sys.exit(1)
 
 
 def pwm_read(channel, attr):
-    """读取 pwm<channel> 的属性,读不到返回 None。"""
+    """Read pwm<channel> attribute, return None if unreadable."""
     path = os.path.join(NODE, f"pwm{channel}", attr)
     try:
         with open(path, "r") as f:
@@ -47,31 +47,31 @@ def pwm_read(channel, attr):
         return None
 
 def pwm_init(channel):
-    """如通道尚未导出则导出并等待初始化。"""
+    """Export channel if not already exported and wait for initialization."""
     pwm_dir = os.path.join(NODE, f"pwm{channel}")
     if not os.path.isdir(pwm_dir):
         if not sudo_write(os.path.join(NODE, "export"), channel):
-            print("错误: 无法导出通道")
+            print("Error: unable to export channel")
             sys.exit(1)
-        time.sleep(0.1)  # 等待设备初始化
+        time.sleep(0.1)  # Wait for device initialization
 
 
 def mode_freq(pin, channel, func, value):
-    """freq 模式: 设置频率。"""
+    """freq mode: set frequency."""
     if value is None or value == "0":
-        print("错误: 无效频率")
+        print("Error: invalid frequency")
 
     try:
         period = int(1_000_000_000 / float(value))
     except (ValueError, ZeroDivisionError):
-        print("错误: 无效频率")
+        print("Error: invalid frequency")
 
     pwm_init(channel)
 
     cur_period = pwm_read(channel, "period")
 
-    # 关键: period 为 0 时不能写 duty_cycle;有残留 duty 时又不能先缩小 period
-    # 策略: 若当前已有周期,先把 duty 归零再改 period;若周期为 0,直接写 period
+    # Critical: cannot write duty_cycle when period is 0; cannot shrink period if duty remains
+    # Strategy: if period exists, zero out duty first then change period; if period is 0, write period directly
     if cur_period and cur_period != "0":
         pwm_write(channel, "duty_cycle", "0")
         pwm_write(channel, "period", str(period))
@@ -81,32 +81,32 @@ def mode_freq(pin, channel, func, value):
 
     pwm_write(channel, "enable", "1")
     pinctrl_set(pin, func)
-    print(f"引脚{pin}: 频率={value}Hz (周期={period}ns)")
+    print(f"Pin{pin}: frequency={value}Hz (period={period}ns)")
 
 
 def mode_duty(pin, channel, value):
-    """duty 模式: 设置占空比百分比。"""
+    """duty mode: set duty cycle percentage."""
     if value is None:
-        print("错误: 无效占空比")
+        print("Error: invalid duty cycle")
 
     pwm_init(channel)
 
     period_str = pwm_read(channel, "period")
     if not period_str or period_str == "0":
-        print("错误: 周期未设置,请先运行 freq 模式")
+        print("Error: period not set, please run freq mode first")
         sys.exit(1)
 
     try:
         duty = int(int(period_str) * float(value) / 100)
     except ValueError:
-        print("错误: 无效占空比")
+        print("Error: invalid duty cycle")
 
     pwm_write(channel, "duty_cycle", str(duty))
-    print(f"引脚{pin}: 占空比={value}% ({duty}ns)")
+    print(f"Pin{pin}: duty cycle={value}% ({duty}ns)")
 
 def mode_off(pin, channel):
-    """off 模式: 关闭并注销 PWM。"""
+    """off mode: disable and unexport PWM."""
     pwm_write(channel, "enable", "0")
     sudo_write(os.path.join(NODE, "unexport"), channel)
     pinctrl_set(pin, "no")
-    print(f"引脚{pin}: PWM已禁用")
+    print(f"Pin{pin}: PWM disabled")
