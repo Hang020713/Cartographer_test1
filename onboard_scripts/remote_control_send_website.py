@@ -647,7 +647,7 @@ def map_joystick_value(x):
     return int(max(0, min(255, (128 / 49) * x + 127 - (128 / 49) * 53)))
 
 def read_joystick():
-    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_client, mapped_video, ID, mapped_reboot_client
+    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_client, mapped_video, ID, mapped_reboot_client, mapped_reboot_controller
 
     if input_ser.in_waiting > 0:
         received_data = rc_utils.read_frame(input_ser, b"\x0a\x0d", JOYSTICK_BIT_LEN, include_start_bytes=True)
