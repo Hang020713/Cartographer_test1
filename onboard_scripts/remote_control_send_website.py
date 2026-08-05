@@ -812,7 +812,7 @@ if __name__ == "__main__":
                 rc_utils.send_bytes(send_ser, bytes.fromhex("AA " + ID + " CC 00 00 00 00 00 00 00 00 00"))
                 print("[WARNING] SENDING REBOOT COMMAND")
             if mapped_reboot_controller:
-                subprocess.run(["sudo", "reboot", "now"])
+                subprocess.run(["shutdown"])
             else:
                 send_manual_control()
 
