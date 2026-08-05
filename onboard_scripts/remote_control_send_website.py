@@ -4,6 +4,7 @@ import threading
 import copy
 from enum import IntEnum
 from flask import Flask, jsonify, render_template_string
+import subprocess
 
 try:
     import rclpy
@@ -53,6 +54,8 @@ mapped_light_pct = 0
 mapped_onoff = 0
 mapped_client = 0
 mapped_video = 0
+mapped_reboot_client = 0
+mapped_reboot_controller = 0
 
 # Threads
 program_stop_event = threading.Event()
@@ -644,7 +647,7 @@ def map_joystick_value(x):
     return int(max(0, min(255, (128 / 49) * x + 127 - (128 / 49) * 53)))
 
 def read_joystick():
-    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_client, mapped_video, ID
+    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_client, mapped_video, ID, mapped_reboot_client
 
     if input_ser.in_waiting > 0:
         received_data = rc_utils.read_frame(input_ser, b"\x0a\x0d", JOYSTICK_BIT_LEN, include_start_bytes=True)
@@ -682,6 +685,10 @@ def read_joystick():
             ID = mapped_client
 
             mapped_video = (button_data2 >> 4) & 1
+
+            # Debug usage (TODO)
+            mapped_reboot_client = (button_data2 >> 6) & 1
+            mapped_reboot_controller = (button_data1 >> 6) & 1
 
         update_latest_joystick_status()
 
@@ -799,7 +806,16 @@ if __name__ == "__main__":
     try:
         while True:
             update_latest_sensor_status()
-            send_manual_control()
+
+            if mapped_reboot_client:
+                # Send reboot command(TODO)
+                rc_utils.send_bytes(send_ser, bytes.fromhex("AA " + ID + " CC 00 00 00 00 00 00 00 00 00"))
+                print("[WARNING] SENDING REBOOT COMMAND")
+            if mapped_reboot_controller:
+                subprocess.run(["sudo", "reboot", "now"])
+            else:
+                send_manual_control()
+
             time.sleep(0.2)
 
             # Ask for status

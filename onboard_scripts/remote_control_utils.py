@@ -14,6 +14,7 @@ class COMMANDS(IntEnum):
     REQUEST_MAP = 1
     SET_MODE = 2
     MANUAL_CONTROL = 3
+    REBOOT = 204
 
 def get_command_type(command_type):
     try:

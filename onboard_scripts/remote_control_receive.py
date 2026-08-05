@@ -7,6 +7,7 @@ import light_utils
 import camera_utils
 import sensor_utils
 import rclpy
+import subprocess
 
 HAVE_PIXHAWK = True
 CLIENT_TYPE = "MASTER"
@@ -249,6 +250,9 @@ def disable_mavlink_output():
 
     light_utils.mode_duty(UVC_LIGHT_PIN, PWM_PIN_MAP[UVC_LIGHT_PIN][0], 0)
 
+    # Disarm
+    mav_master.arducopter_disarm()
+
     is_armed = False
 
 def map_brush_pwm(brush_dir, brush_speed, side):
@@ -429,6 +433,14 @@ def command_handler_thread_func():
                     if not (onoff == last_onoff):
                         disable_mavlink_output()
                 last_onoff = onoff
+            case rc_utils.COMMANDS.REBOOT:
+                print("Receive reboot command")
+
+                # Send response
+                # AA 02 04 00 00 00 00 00 00 00 00 00
+                response = rc_utils.send_bytes(ser, b"Reboot OK")
+
+                subprocess.run(["sudo", "reboot", "now"])
 
         time.sleep(0.01)
 
