@@ -15,8 +15,8 @@ except Exception:
 
 # Debug parameter
 HAVE_JOYSTICK=False
-DEBUG_JOYSTICK=False
-WEB_DASHBOARD=True           # Start the web dashboard by default
+DEBUG_JOYSTICK=True
+WEB_DASHBOARD=False           # Start the web dashboard by default
 WEB_HOST="0.0.0.0"
 WEB_PORT=5050
 
@@ -38,6 +38,7 @@ BUTTON_BIT2 = 19
 BRUSH_SPEED_BIT = 10
 LIGHT_BIT = 12
 ONOFF_BIT = 19
+SPEED_BIT = 16
 
 # Payload parameter
 MESSAGE_ID = 0xAA
@@ -56,6 +57,7 @@ mapped_client = 0
 mapped_video = 0
 mapped_reboot_client = 0
 mapped_reboot_controller = 0
+mapped_brush_speed_2 = 0
 
 # Threads
 program_stop_event = threading.Event()
@@ -647,7 +649,10 @@ def map_joystick_value(x):
     return int(max(0, min(255, (128 / 49) * x + 127 - (128 / 49) * 53)))
 
 def read_joystick():
-    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_client, mapped_video, ID, mapped_reboot_client, mapped_reboot_controller
+    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, \
+        mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, \
+        mapped_client, mapped_video, ID, mapped_reboot_client, mapped_reboot_controller, \
+        mapped_brush_speed_2
 
     if input_ser.in_waiting > 0:
         received_data = rc_utils.read_frame(input_ser, b"\x0a\x0d", JOYSTICK_BIT_LEN, include_start_bytes=True)
@@ -662,8 +667,9 @@ def read_joystick():
         button_data1 = received_data[BUTTON_BIT1]
         button_data2 = received_data[BUTTON_BIT2]
         brush_speed = received_data[BRUSH_SPEED_BIT]
+        brush_speed_2 = received_data[SPEED_BIT]
         light_pct = received_data[LIGHT_BIT]
-        onoff = received_data[ONOFF_BIT]
+        #onoff = received_data[ONOFF_BIT]
 
         # Map to 0-255
         with joystick_lock:
@@ -686,9 +692,12 @@ def read_joystick():
 
             mapped_video = (button_data2 >> 4) & 1
 
+            mapped_brush_speed_2 = 100 if brush_speed_2 > 100 else brush_speed_2
+
             # Debug usage (TODO)
             mapped_reboot_client = (button_data2 >> 6) & 1
             mapped_reboot_controller = (button_data1 >> 6) & 1
+            
 
         update_latest_joystick_status()
 
@@ -698,14 +707,17 @@ def read_joystick():
             print(f"[{time.time()}]Light: {mapped_light_pct}({light_pct})")
             print(f"[{time.time()}]OnOff: {mapped_onoff}")
             print(f"[{time.time()}]Client: {mapped_client}, Video: {mapped_video}")
+            print(f"[{time.time()}]Brush2 speed: {mapped_brush_speed_2}")
 
 def send_manual_control(read_response=False):
-    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_video
+    global mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y, mapped_brush_dir, \
+        mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_video, mapped_brush_speed_2
 
     # LX, LY, RX, RY, Brush dir, Brush speed, light
     byte_data = bytes([MESSAGE_ID, ID, rc_utils.COMMANDS.MANUAL_CONTROL,
                        mapped_left_x, mapped_left_y, mapped_right_x, mapped_right_y,
-                       mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, mapped_video
+                       mapped_brush_dir, mapped_brush_speed, mapped_light_pct, mapped_onoff, 
+                       mapped_video, mapped_brush_speed_2
                     ])
     print(f"[{time.time()}]{ID}")
     response = rc_utils.send_bytes(send_ser, byte_data, wait_time=0.3, read_response=read_response)
