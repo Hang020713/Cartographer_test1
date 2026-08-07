@@ -358,12 +358,14 @@ def command_handler_thread_func():
                 light_pct = next_command[8:9]
                 onoff = int.from_bytes(next_command[9:10], byteorder='little')
                 video = int.from_bytes(next_command[10:11], byteorder='little')
+                brush_speed_2 = int.from_bytes(next_command[11:12], byteorder='little')
 
                 print(f"[{time.time()}]Steering Left: {steering_left.hex()}\nThrottle Left: {throttle_left.hex()}\nSteering Right: {steering_right.hex()}\nThrottle Right: {throttle_right.hex()}\n-EOF")
                 print(f"[{time.time()}]Brush Dir: {brush_dir}, {brush_speed}")
                 print(f"[{time.time()}]Light: {light_pct}")
                 print(f"[{time.time()}]onoff: {onoff}")
                 print(f"[{time.time()}]video: {video}")
+                print(f"[{time.time()}]brush2: {brush_speed_2}")
 
                 if video:
                     if not camera_recorder.is_running:
@@ -419,7 +421,7 @@ def command_handler_thread_func():
                             hb = mav_master.recv_match(type='HEARTBEAT', blocking=True)
                             is_armed = hb.base_mode & 128  # MAV_MODE_FLAG_SAFETY_ARMED
 
-                    update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct)
+                    update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct, brush_speed_2)
                 else:
                     if CLIENT_TYPE == "SLAVE":
                         mav_master.mav.manual_control_send(
@@ -444,7 +446,7 @@ def command_handler_thread_func():
 
         time.sleep(0.01)
 
-def update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct):
+def update_manual_control(steering_left, throttle_left, steering_right, throttle_right, brush_dir, brush_speed, light_pct, brush_speed_2):
     global UVC_LIGHT_LAST_DUTY
 
     # Calculate PWM values based on the received data
@@ -479,7 +481,7 @@ def update_manual_control(steering_left, throttle_left, steering_right, throttle
 
     # Brush
     left_brush_pwm = map_brush_pwm(brush_dir, brush_speed, "left")
-    right_brush_pwm = map_brush_pwm(brush_dir, brush_speed, "right")
+    right_brush_pwm = map_brush_pwm(brush_dir, brush_speed_2, "right")
     print(f"[{time.time()}]Left Brush: {left_brush_pwm}, Right Brush: {right_brush_pwm}")
 
     # Light
